@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="light dark" />
+  <title>Coach panel — Master Booker</title>
+  <script>
+    (function () {
+      var theme = "light";
+      try {
+        var saved = localStorage.getItem("theme");
+        theme = (saved === "light" || saved === "dark")
+          ? saved
+          : (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      } catch (e) { /* private mode */ }
+      document.documentElement.setAttribute("data-theme", theme);
+    })();
+  </script>
+  <link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+
+<div class="page wide">
+  <header class="app-header">
+    <h1>Coach panel</h1>
+    <span class="spacer"></span>
+    <span id="who" class="who"></span>
+    <button id="signOut" class="btn ghost small hidden" type="button">Sign out</button>
+    <button id="themeToggle" class="theme-toggle" type="button" aria-label="Switch theme">☾</button>
+  </header>
+
+  <section id="loginView" class="card hidden">
+    <h2>Sign in</h2>
+    <p style="margin-top:0;color:var(--text-2);font-size:14px">
+      This panel shows every client's name and can cancel any lesson, so it
+      needs the passcode.
+    </p>
+    <div class="field">
+      <label class="field-label" for="passcode">Passcode</label>
+      <input id="passcode" type="password" autocomplete="current-password">
+    </div>
+    <button id="signIn" class="btn primary">Sign in</button>
+    <div id="loginNotice" class="notice hidden" style="margin-top:14px"></div>
+  </section>
+
+  <div id="appView" class="hidden">
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-view="day" role="tab">Day</button>
+      <button class="tab" data-view="availability" role="tab">Availability</button>
+      <button class="tab" data-view="clients" role="tab">Clients</button>
+      <button class="tab" data-view="requests" role="tab">Requests <span id="requestCount" class="pill hidden"></span></button>
+      <button class="tab" data-view="outbox" role="tab">To tell <span id="outboxCount" class="pill hidden"></span></button>
+      <button class="tab" data-view="stats" role="tab">Stats</button>
+    </nav>
+
+    <!-- ---- Day ---- -->
+    <section id="dayView" class="card">
+      <h2>Day view</h2>
+      <div class="btn-row" style="margin-bottom:14px">
+        <button id="dayPrev" class="btn ghost small">‹</button>
+        <input id="dayDate" type="date" style="width:auto">
+        <button id="dayNext" class="btn ghost small">›</button>
+        <button id="dayToday" class="btn ghost small">Today</button>
+      </div>
+      <div id="dayNotice" class="notice hidden"></div>
+      <div id="dayStats" class="stat-grid" style="margin-bottom:14px"></div>
+      <div id="dayHost"></div>
+      <div id="compactHost" style="margin-top:16px"></div>
+    </section>
+
+    <!-- ---- Availability ---- -->
+    <section id="availabilityView" class="card hidden">
+      <h2>Availability</h2>
+      <div class="field-row">
+        <div class="field">
+          <span class="field-label">Applies to</span>
+          <select id="availKind">
+            <option value="weekly">Every week</option>
+            <option value="date">One date</option>
+          </select>
+        </div>
+        <div class="field" id="availWeekdayField">
+          <label class="field-label" for="availWeekday">Weekday</label>
+          <select id="availWeekday"></select>
+        </div>
+        <div class="field hidden" id="availDateField">
+          <label class="field-label" for="availDate">Date</label>
+          <input id="availDate" type="date">
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label" for="availStart">From</label>
+          <input id="availStart" type="time" value="16:00" step="900">
+        </div>
+        <div class="field">
+          <label class="field-label" for="availEnd">To</label>
+          <input id="availEnd" type="time" value="21:00" step="900">
+        </div>
+        <div class="field">
+          <label class="field-label" for="availBudget">Gap budget</label>
+          <input id="availBudget" type="number" min="0" step="15" placeholder="Auto">
+        </div>
+      </div>
+      <label class="check" style="margin-bottom:12px">
+        <input id="availClosed" type="checkbox">
+        <span class="check-text">Closed
+          <small>A dated entry with this ticked blocks online booking for that day.</small></span>
+      </label>
+      <button id="availSave" class="btn primary">Add window</button>
+      <h3>Current windows</h3>
+      <div id="availHost"></div>
+    </section>
+
+    <!-- ---- Clients ---- -->
+    <section id="clientsView" class="card hidden">
+      <h2>Clients</h2>
+      <p class="sub" style="color:var(--muted);font-size:13.5px;margin-top:0">
+        A bookable unit is often a couple — one record, one booking, one lesson.
+        Any address listed can sign in and sees the same bookings.
+      </p>
+      <div class="field">
+        <label class="field-label" for="clientName">Display name</label>
+        <input id="clientName" type="text" placeholder="Nemanja i Ivana">
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label" for="p1name">Person 1</label>
+          <input id="p1name" type="text" placeholder="Name">
+        </div>
+        <div class="field">
+          <label class="field-label" for="p2name">Person 2 <span style="text-transform:none">(optional)</span></label>
+          <input id="p2name" type="text" placeholder="Name">
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label" for="clientType">Default lesson</label>
+          <select id="clientType"></select>
+        </div>
+        <div class="field">
+          <label class="field-label" for="clientPhone">Phone <span style="text-transform:none">(optional)</span></label>
+          <input id="clientPhone" type="tel" placeholder="064 123 4567">
+        </div>
+      </div>
+      <div class="field">
+        <span class="field-label">Reachable on</span>
+        <div id="clientChannels" class="btn-row"></div>
+      </div>
+      <button id="clientSave" class="btn primary">Save client</button>
+      <h3>Roster</h3>
+      <div id="clientsHost"></div>
+    </section>
+
+    <!-- ---- Requests ---- -->
+    <section id="requestsView" class="card hidden">
+      <h2>Requests</h2>
+      <div id="requestsHost"></div>
+    </section>
+
+    <!-- ---- Outbox ---- -->
+    <section id="outboxView" class="card hidden">
+      <h2>People to tell</h2>
+      <p style="margin-top:0;color:var(--text-2);font-size:14px">
+        Nothing is sent automatically. Each change waits here with the client's
+        number until you've told them — tap to open the app they use.
+      </p>
+      <div id="outboxNotice" class="notice hidden"></div>
+      <div id="outboxHost"></div>
+    </section>
+
+    <!-- ---- Stats ---- -->
+    <section id="statsView" class="card hidden">
+      <h2>Statistics</h2>
+      <div class="field" style="max-width:220px">
+        <label class="field-label" for="statsSeason">Season</label>
+        <select id="statsSeason"></select>
+      </div>
+      <div id="statsHost"></div>
+    </section>
+  </div>
+</div>
+
+<div id="toastHost" class="toast-host" aria-live="polite"></div>
+<script type="module" src="/src/coach/main.ts"></script>
+</body>
+</html>

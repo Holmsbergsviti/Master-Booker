@@ -1,0 +1,351 @@
+/* =====================================================================
+   Master Booker.
+
+   The palette is lifted from the calendar app deliberately: the coach
+   moves between the two all evening, and they should read as one system.
+   ===================================================================== */
+
+:root {
+  color-scheme: light;
+
+  --brand-500:  #6366f1;
+  --brand-600:  #4f46e5;
+  --brand-glow: rgba(99, 102, 241, 0.40);
+
+  --color-primary: #6366f1;
+  --color-danger:  #e11d48;
+  --color-accent:  #9333ea;
+  --color-success: #059669;
+  --color-warn:    #d97706;
+
+  --surface:        #ffffff;
+  --surface-2:      #f8fafc;
+  --surface-sunken: #f1f5f9;
+  --page-bg:        #eef1f7;
+
+  --border:        #e2e8f0;
+  --border-strong: #cbd5e1;
+
+  --text:   #0f172a;
+  --text-2: #475569;
+  --muted:  #64748b;
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-xl: 24px;
+
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, .06), 0 2px 6px rgba(15, 23, 42, .05);
+  --shadow-md: 0 4px 12px rgba(15, 23, 42, .08), 0 12px 28px rgba(15, 23, 42, .07);
+
+  --notice-warn-bg:  #fffbeb;
+  --notice-warn-bd:  #fcd34d;
+  --notice-warn-tx:  #92400e;
+  --notice-error-bg: #fef2f2;
+  --notice-error-bd: #fca5a5;
+  --notice-error-tx: #991b1b;
+  --notice-info-bg:  #eff6ff;
+  --notice-info-bd:  #93c5fd;
+  --notice-info-tx:  #1e40af;
+  --notice-ok-bg:    #ecfdf5;
+  --notice-ok-bd:    #6ee7b7;
+  --notice-ok-tx:    #065f46;
+
+  --ease-out: cubic-bezier(.16, 1, .3, 1);
+  --dur: .22s;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --brand-500:  #818cf8;
+  --brand-600:  #6366f1;
+  --brand-glow: rgba(129, 140, 248, 0.34);
+
+  --color-primary: #818cf8;
+  --color-danger:  #fb7185;
+  --color-accent:  #c084fc;
+  --color-success: #34d399;
+  --color-warn:    #fbbf24;
+
+  --surface:        #161b26;
+  --surface-2:      #1c2231;
+  --surface-sunken: #232a3a;
+  --page-bg:        #0b0e14;
+
+  --border:        #2a3244;
+  --border-strong: #3a4459;
+
+  --text:   #e8ecf5;
+  --text-2: #b3bdd0;
+  --muted:  #8b96ad;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .40);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, .45), 0 12px 28px rgba(0, 0, 0, .35);
+
+  --notice-warn-bg:  #2e2408;
+  --notice-warn-bd:  #a16207;
+  --notice-warn-tx:  #fcd34d;
+  --notice-error-bg: #3a1218;
+  --notice-error-bd: #9f1239;
+  --notice-error-tx: #fda4af;
+  --notice-info-bg:  #12233f;
+  --notice-info-bd:  #1d4ed8;
+  --notice-info-tx:  #93c5fd;
+  --notice-ok-bg:    #0d2b22;
+  --notice-ok-bd:    #047857;
+  --notice-ok-tx:    #6ee7b7;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--page-bg);
+  color: var(--text);
+  font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.page { max-width: 720px; margin: 0 auto; padding: 20px 16px 64px; }
+.page.wide { max-width: 980px; }
+
+/* ---------- header ---------- */
+
+.app-header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 4px 0 18px;
+}
+.app-header h1 { font-size: 20px; font-weight: 650; margin: 0; letter-spacing: -.01em; }
+.app-header .spacer { margin-left: auto; }
+.who { font-size: 13px; color: var(--muted); }
+
+/* ---------- cards ---------- */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 18px;
+  margin-bottom: 16px;
+}
+.card h2 {
+  font-size: 13px; font-weight: 650; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--muted);
+  margin: 0 0 14px;
+}
+.card h3 { font-size: 15px; font-weight: 620; margin: 18px 0 10px; }
+
+/* ---------- tabs ---------- */
+
+.tabs {
+  display: flex; gap: 4px; margin-bottom: 16px;
+  background: var(--surface-sunken);
+  border-radius: var(--radius-md); padding: 4px;
+  overflow-x: auto;
+}
+.tab {
+  flex: 1 0 auto; border: 0; background: none; cursor: pointer;
+  padding: 8px 14px; border-radius: var(--radius-sm);
+  font: inherit; font-size: 14px; font-weight: 550; color: var(--text-2);
+  white-space: nowrap;
+  transition: background var(--dur) var(--ease-out), color var(--dur) var(--ease-out);
+}
+.tab.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm); }
+
+/* ---------- forms ---------- */
+
+.field { margin-bottom: 14px; }
+.field-label {
+  display: block; font-size: 12px; font-weight: 600;
+  color: var(--muted); margin-bottom: 6px;
+  text-transform: uppercase; letter-spacing: .04em;
+}
+/* Every text-like input, rather than a list of types that goes stale the
+   moment a form gains a tel or password field — which is exactly what
+   happened. Checkboxes and radios are excluded explicitly. */
+input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]),
+select, textarea {
+  width: 100%; padding: 10px 12px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--text);
+  font: inherit;
+  transition: border-color var(--dur) var(--ease-out), box-shadow var(--dur) var(--ease-out);
+}
+input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:focus {
+  outline: none; border-color: var(--brand-500);
+  box-shadow: 0 0 0 3px var(--brand-glow);
+}
+.field-row { display: flex; gap: 12px; }
+.field-row > * { flex: 1; min-width: 0; }
+
+.check {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 12px; border: 1px solid var(--border);
+  border-radius: var(--radius-md); background: var(--surface-2);
+  cursor: pointer;
+}
+.check input { margin: 2px 0 0; flex: none; }
+.check-text { font-size: 14px; }
+.check-text small { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+
+/* ---------- buttons ---------- */
+
+.btn {
+  border: 1px solid transparent; border-radius: var(--radius-sm);
+  padding: 10px 16px; font: inherit; font-weight: 600; font-size: 14px;
+  cursor: pointer; background: var(--surface-sunken); color: var(--text);
+  transition: transform var(--dur) var(--ease-out), filter var(--dur) var(--ease-out);
+}
+.btn:hover:not(:disabled) { filter: brightness(1.06); }
+.btn:active:not(:disabled) { transform: translateY(1px); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn.primary { background: var(--brand-600); color: #fff; }
+.btn.danger  { background: var(--color-danger); color: #fff; }
+.btn.ghost   { background: none; border-color: var(--border-strong); color: var(--text-2); }
+.btn.small   { padding: 6px 11px; font-size: 13px; }
+.btn-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+/* ---------- slots ---------- */
+
+.slot-grid {
+  display: grid; gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(94px, 1fr));
+}
+.slot {
+  position: relative;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-md);
+  background: var(--surface); color: var(--text);
+  padding: 12px 8px; font: inherit; font-size: 15px; font-weight: 600;
+  cursor: pointer; text-align: center;
+  transition: border-color var(--dur) var(--ease-out), transform var(--dur) var(--ease-out);
+}
+.slot:hover { border-color: var(--brand-500); transform: translateY(-1px); }
+.slot.selected {
+  border-color: var(--brand-500); background: var(--brand-600); color: #fff;
+  box-shadow: 0 0 0 3px var(--brand-glow);
+}
+/* Slots that close an existing gap are surfaced first and marked, since
+   taking one is the single most useful thing a client can do. */
+.slot.closes::after {
+  content: ""; position: absolute; top: 6px; right: 6px;
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--color-success);
+}
+.slot.selected.closes::after { background: #fff; }
+.slot-legend { font-size: 12.5px; color: var(--muted); margin-top: 10px; }
+.slot-legend .dot {
+  display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--color-success); margin-right: 5px; vertical-align: 1px;
+}
+
+/* ---------- lists ---------- */
+
+.row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 0; border-bottom: 1px solid var(--border);
+}
+.row:last-child { border-bottom: 0; }
+.row .grow { flex: 1; min-width: 0; }
+.row .time { font-variant-numeric: tabular-nums; font-weight: 650; font-size: 15px; }
+.row .sub { font-size: 13px; color: var(--muted); }
+
+.empty { color: var(--muted); font-size: 14px; padding: 8px 0; }
+
+/* ---------- notices ---------- */
+
+.notice {
+  border: 1px solid; border-radius: var(--radius-md);
+  padding: 11px 14px; font-size: 13.5px; margin-bottom: 14px;
+}
+.notice.warn  { background: var(--notice-warn-bg);  border-color: var(--notice-warn-bd);  color: var(--notice-warn-tx); }
+.notice.error { background: var(--notice-error-bg); border-color: var(--notice-error-bd); color: var(--notice-error-tx); }
+.notice.info  { background: var(--notice-info-bg);  border-color: var(--notice-info-bd);  color: var(--notice-info-tx); }
+.notice.ok    { background: var(--notice-ok-bg);    border-color: var(--notice-ok-bd);    color: var(--notice-ok-tx); }
+.notice strong { display: block; margin-bottom: 2px; }
+
+/* ---------- stats ---------- */
+
+.stat-grid {
+  display: grid; gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  margin-bottom: 4px;
+}
+.stat {
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--radius-md); padding: 14px;
+}
+.stat .value { font-size: 24px; font-weight: 680; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.stat .label { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+/* A bar chart drawn in CSS. A real charting library would be more
+   weight than four bars of lessons-per-month deserve. */
+.bars { display: flex; align-items: flex-end; gap: 6px; height: 120px; margin: 12px 0 6px; }
+.bars .bar { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; }
+.bars .fill {
+  background: var(--brand-500); border-radius: 4px 4px 0 0; min-height: 2px;
+  transition: height var(--dur) var(--ease-out);
+}
+.bars .cap { font-size: 11px; text-align: center; color: var(--muted); margin-top: 4px; }
+.bar-axis { display: flex; gap: 6px; }
+.bar-axis span { flex: 1; text-align: center; font-size: 11px; color: var(--muted); }
+
+.meter { height: 8px; border-radius: 4px; background: var(--surface-sunken); overflow: hidden; margin-top: 8px; }
+.meter .fill { height: 100%; background: var(--color-success); border-radius: 4px; }
+
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--border); }
+th { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.table-scroll { overflow-x: auto; }
+
+/* ---------- misc ---------- */
+
+.countdown {
+  font-variant-numeric: tabular-nums; font-weight: 680;
+  color: var(--color-warn);
+}
+.pill {
+  display: inline-block; padding: 2px 8px; border-radius: 999px;
+  font-size: 11.5px; font-weight: 600; background: var(--surface-sunken); color: var(--text-2);
+}
+.pill.ok   { background: var(--notice-ok-bg);   color: var(--notice-ok-tx); }
+.pill.warn { background: var(--notice-warn-bg); color: var(--notice-warn-tx); }
+
+.spinner {
+  width: 16px; height: 16px; border-radius: 50%;
+  border: 2px solid var(--border-strong); border-top-color: var(--brand-500);
+  animation: spin .7s linear infinite; display: inline-block; vertical-align: -3px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.toast-host {
+  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+  display: flex; flex-direction: column; gap: 8px; z-index: 50;
+  width: min(420px, calc(100vw - 32px));
+}
+.toast {
+  background: var(--surface); border: 1px solid var(--border);
+  border-left: 3px solid var(--brand-500);
+  border-radius: var(--radius-md); box-shadow: var(--shadow-md);
+  padding: 11px 14px; font-size: 14px;
+  animation: rise .3s var(--ease-out);
+}
+.toast.error   { border-left-color: var(--color-danger); }
+.toast.success { border-left-color: var(--color-success); }
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+
+.theme-toggle {
+  border: 1px solid var(--border-strong); background: var(--surface);
+  border-radius: 999px; width: 34px; height: 34px; cursor: pointer;
+  font-size: 15px; line-height: 1; color: var(--text-2);
+}
+
+.hidden { display: none !important; }
+
+@media (max-width: 520px) {
+  .field-row { flex-direction: column; gap: 0; }
+  .page { padding: 16px 12px 56px; }
+}

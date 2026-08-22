@@ -1,0 +1,27 @@
+{
+  "name": "master-booker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Lesson booking for Master Dance Studio",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:live": "vitest run --config vitest.live.config.ts",
+    "rebuild": "vite-node scripts/rebuild-index.ts",
+    "smoke": "vite-node scripts/smoke.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@netlify/functions": "^2.8.2",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10",
+    "vitest": "^2.1.4"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.7.0"
+  }
+}

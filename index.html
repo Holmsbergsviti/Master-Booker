@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="light dark" />
+  <title>Book a lesson — Master Dance Studio</title>
+
+  <!-- Resolve the theme before the first paint, or a dark-mode user gets
+       a white flash while the module script loads. -->
+  <script>
+    (function () {
+      var theme = "light";
+      try {
+        var saved = localStorage.getItem("theme");
+        theme = (saved === "light" || saved === "dark")
+          ? saved
+          : (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      } catch (e) { /* private mode */ }
+      document.documentElement.setAttribute("data-theme", theme);
+    })();
+  </script>
+  <link rel="stylesheet" href="/src/style.css">
+</head>
+<body>
+
+<div class="page">
+  <header class="app-header">
+    <h1>Master Dance Studio</h1>
+    <span class="spacer"></span>
+    <span id="who" class="who"></span>
+    <button id="signOut" class="btn ghost small hidden" type="button">Sign out</button>
+    <button id="themeToggle" class="theme-toggle" type="button" aria-label="Switch theme">☾</button>
+  </header>
+
+  <!-- ===== Signed out ===== -->
+  <section id="loginView" class="card hidden">
+    <h2>Sign in</h2>
+    <p style="margin-top:0;color:var(--text-2);font-size:14px">
+      Your name and number, once. This device will remember you.
+    </p>
+    <div class="field-row">
+      <div class="field">
+        <label class="field-label" for="firstName">First name</label>
+        <input id="firstName" type="text" autocomplete="given-name">
+      </div>
+      <div class="field">
+        <label class="field-label" for="lastName">Surname</label>
+        <input id="lastName" type="text" autocomplete="family-name">
+      </div>
+    </div>
+    <div class="field">
+      <label class="field-label" for="signinPhone">Phone number</label>
+      <input id="signinPhone" type="tel" autocomplete="tel" placeholder="064 123 4567">
+    </div>
+    <div class="field">
+      <span class="field-label">Which apps is it on?</span>
+      <div id="signinChannels" class="btn-row"></div>
+      <p style="color:var(--muted);font-size:12.5px;margin:8px 0 0">
+        So your coach can reach you if a lesson has to move.
+      </p>
+    </div>
+    <button id="signIn" class="btn primary">Continue</button>
+    <div id="loginNotice" class="notice hidden" style="margin-top:14px"></div>
+  </section>
+
+  <!-- ===== Signed in ===== -->
+  <div id="appView" class="hidden">
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-view="book" role="tab">Book</button>
+      <button class="tab" data-view="lessons" role="tab">Lessons</button>
+      <button class="tab" data-view="details" role="tab">Details</button>
+      <button class="tab" data-view="stats" role="tab">Stats</button>
+    </nav>
+
+    <!-- ---- Book ---- -->
+    <section id="bookView" class="card">
+      <h2>Book a lesson</h2>
+
+      <div class="field-row">
+        <div class="field">
+          <label class="field-label" for="bookDate">Date</label>
+          <input id="bookDate" type="date">
+        </div>
+        <div class="field">
+          <label class="field-label" for="bookType">Lesson</label>
+          <select id="bookType"></select>
+        </div>
+      </div>
+
+      <div id="slotNotice" class="notice hidden"></div>
+      <div id="slotHost"></div>
+
+      <div id="confirmPanel" class="hidden" style="margin-top:18px">
+        <h3 id="confirmHeading"></h3>
+        <div id="finalWarning" class="notice warn hidden"></div>
+        <label class="check">
+          <input id="flexible" type="checkbox">
+          <span class="check-text">
+            Can you shift by up to an hour if needed?
+            <small>Helps the coach close gaps. You'll always be told before anything moves.</small>
+          </span>
+        </label>
+        <div class="btn-row" style="margin-top:14px">
+          <button id="confirmBook" class="btn primary">Confirm booking</button>
+          <button id="cancelPick" class="btn ghost">Back</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---- My lessons ---- -->
+    <section id="lessonsView" class="card hidden">
+      <h2>My lessons</h2>
+      <div id="lessonsHost"></div>
+    </section>
+
+    <!-- ---- My details ---- -->
+    <section id="detailsView" class="card hidden">
+      <h2>How your coach reaches you</h2>
+      <p style="margin-top:0;color:var(--text-2);font-size:14px">
+        If a lesson has to move, your coach will message you. Tell them which
+        apps your number is on.
+      </p>
+      <div class="field">
+        <label class="field-label" for="phone">Phone number</label>
+        <input id="phone" type="tel" autocomplete="tel" placeholder="064 123 4567">
+      </div>
+      <div class="field">
+        <span class="field-label">Reachable on</span>
+        <div id="channelChips" class="btn-row"></div>
+      </div>
+      <button id="saveContact" class="btn primary">Save</button>
+      <div id="contactNotice" class="notice hidden" style="margin-top:14px"></div>
+    </section>
+
+    <!-- ---- My stats ---- -->
+    <section id="statsView" class="card hidden">
+      <h2>My stats</h2>
+      <div id="statsHost"></div>
+    </section>
+  </div>
+</div>
+
+<div id="toastHost" class="toast-host" aria-live="polite"></div>
+<script type="module" src="/src/client/main.ts"></script>
+</body>
+</html>
