@@ -118,6 +118,7 @@ async function main(): Promise<void> {
 
   /* --- book --- */
   const target = offered.find(s => s.label === "18:00") ?? offered[0];
+  if (!target) throw new Error("No slots offered — cannot test booking.");
   const booking = await post(book, "/api/book",
     { date: DATE, start: target.start, lessonType: "class", flexible: true }, CLIENT);
   const bookingBody = await json(booking);

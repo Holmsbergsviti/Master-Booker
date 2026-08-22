@@ -349,3 +349,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .field-row { flex-direction: column; gap: 0; }
   .page { padding: 16px 12px 56px; }
 }
+
+a[href*="netlify.com"] {
+  display: none;
+}

@@ -19,5 +19,5 @@
     "noEmit": true,
     "types": ["vite/client"]
   },
-  "include": ["src", "netlify", "tests", "vite.config.ts"]
+  "include": ["src", "netlify", "tests", "scripts", "vite.config.ts", "vite-plugin-functions.ts"]
 }
