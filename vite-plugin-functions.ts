@@ -48,7 +48,15 @@ export function netlifyFunctions(): Plugin {
 
         try {
           routes ??= await discoverRoutes(server);
-          const file = routes.get(url.pathname);
+          let file = routes.get(url.pathname);
+
+          // A function added since the server started is not in the
+          // table yet. Rebuild once before giving up, so writing a new
+          // function does not mean restarting the dev server to see it.
+          if (!file) {
+            routes = await discoverRoutes(server);
+            file = routes.get(url.pathname);
+          }
           if (!file) {
             reply(404, { error: `No function serves ${url.pathname}` });
             return;

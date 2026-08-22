@@ -83,6 +83,21 @@ export const FLEXIBLE_SHIFT_MINUTES = 60;
 /** Candidate start times are aligned to this grid. */
 export const SLOT_ALIGN_MINUTES = 15;
 
+/* ---------- Slot grouping ---------- */
+
+/** Slots are shown under time-of-day headings rather than as one long
+ *  list, because on a phone only a handful are visible at once and a
+ *  flat grid gives no sense of where you are in the day.
+ *
+ *  Boundaries are minutes past midnight. A section with nothing in it is
+ *  not rendered, so a studio that only opens in the evening shows one
+ *  heading rather than two empty ones. */
+export const SLOT_SECTIONS: ReadonlyArray<{ id: string; label: string; untilMinutes: number }> = [
+  { id: "morning", label: "Morning", untilMinutes: 12 * 60 },
+  { id: "day",     label: "Day",     untilMinutes: 18 * 60 },
+  { id: "evening", label: "Evening", untilMinutes: 24 * 60 }
+];
+
 /* ---------- Day index ---------- */
 
 /** The statistics floor: nothing before this counts toward a season.

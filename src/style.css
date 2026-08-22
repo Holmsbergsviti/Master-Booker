@@ -114,12 +114,25 @@ body {
 /* ---------- header ---------- */
 
 .app-header {
-  display: flex; align-items: center; gap: 12px;
-  padding: 4px 0 18px;
+  display: flex; align-items: center; gap: 10px;
+  padding: 4px 0 16px;
 }
-.app-header h1 { font-size: 20px; font-weight: 650; margin: 0; letter-spacing: -.01em; }
+.app-header h1 {
+  /* Shrinks with the viewport rather than wrapping. Three wrapped lines
+     of chrome cost more than a phone screen can spare. */
+  font-size: clamp(17px, 4.6vw, 20px);
+  font-weight: 650; margin: 0; letter-spacing: -.01em;
+  white-space: nowrap;
+}
 .app-header .spacer { margin-left: auto; }
-.who { font-size: 13px; color: var(--muted); }
+.app-header .btn { white-space: nowrap; flex: none; }
+.who {
+  font-size: 13px; color: var(--muted);
+  /* Truncate rather than wrap: a long couple's name would otherwise
+     push the sign-out button onto its own line. */
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 34vw; min-width: 0;
+}
 
 /* ---------- cards ---------- */
 
@@ -208,23 +221,129 @@ input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:f
 .btn.small   { padding: 6px 11px; font-size: 13px; }
 .btn-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 
+/* ---------- calendar ---------- */
+
+.calendar {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-2);
+  padding: 10px 10px 6px;
+  margin-bottom: 18px;
+}
+
+.cal-head {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 6px;
+}
+
+.cal-month {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--border-strong); border-radius: 999px;
+  background: var(--surface); color: var(--text);
+  font: inherit; font-weight: 640; font-size: 15px;
+  padding: 7px 14px; cursor: pointer;
+}
+.cal-month .chev {
+  width: 15px; height: 15px;
+  transition: transform var(--dur) var(--ease-out);
+}
+.cal-month[aria-expanded="false"] .chev { transform: rotate(180deg); }
+
+.cal-nav { margin-left: auto; display: flex; gap: 4px; }
+.cal-arrow {
+  width: 36px; height: 36px; padding: 0;
+  display: grid; place-items: center;
+  border: 0; border-radius: 50%;
+  background: none; color: var(--text-2); cursor: pointer;
+}
+.cal-arrow svg { width: 19px; height: 19px; }
+.cal-arrow:hover:not(:disabled) { background: var(--surface-sunken); color: var(--text); }
+.cal-arrow:disabled { opacity: .3; cursor: not-allowed; }
+
+.cal-body { overflow: hidden; }
+.cal-body.collapsed { display: none; }
+
+.cal-weekdays, .cal-grid {
+  display: grid; grid-template-columns: repeat(7, 1fr);
+}
+.cal-weekdays {
+  margin-bottom: 2px;
+}
+.cal-weekdays span {
+  text-align: center; font-size: 12px; color: var(--muted);
+  padding: 6px 0; font-weight: 550;
+}
+
+.cal-day {
+  /* Square cells, so the grid keeps its shape from 320px up without a
+     media query per width. */
+  aspect-ratio: 1;
+  display: grid; place-items: center;
+  border: 0; background: none; cursor: pointer;
+  font: inherit; font-size: 15px; font-weight: 550;
+  color: var(--text);
+  border-radius: 50%;
+  position: relative;
+  transition: background var(--dur) var(--ease-out), color var(--dur) var(--ease-out);
+}
+.cal-day:hover:not(:disabled):not(.selected) { background: var(--surface-sunken); }
+
+/* Days with nothing bookable stay visible but plainly inert — a student
+   should be able to see the shape of the month, not just the gaps. */
+.cal-day:disabled { color: var(--muted); opacity: .45; cursor: default; }
+.cal-day.outside { visibility: hidden; }
+
+.cal-day.today:not(.selected) { background: var(--surface-sunken); font-weight: 700; }
+.cal-day.selected {
+  background: var(--brand-600); color: #fff; font-weight: 700;
+  box-shadow: 0 0 0 3px var(--brand-glow);
+}
+
+/* A dot under a day that has a gap-closing slot: the coach's day gets
+   tighter if it is taken, so it is worth pointing at. */
+.cal-day.closes::after {
+  content: ""; position: absolute; bottom: 5px; left: 50%;
+  transform: translateX(-50%);
+  width: 4px; height: 4px; border-radius: 50%;
+  background: var(--color-success);
+}
+.cal-day.selected.closes::after { background: #fff; }
+
 /* ---------- slots ---------- */
+
+.slot-section { margin-bottom: 4px; }
+.slot-section-head {
+  display: flex; align-items: center; width: 100%;
+  border: 0; background: none; cursor: pointer;
+  font: inherit; font-size: 15px; font-weight: 620; color: var(--text);
+  padding: 12px 2px; text-align: left;
+}
+.slot-section-head .chev {
+  width: 16px; height: 16px; margin-left: auto; color: var(--muted);
+  transition: transform var(--dur) var(--ease-out);
+}
+.slot-section-head[aria-expanded="false"] .chev { transform: rotate(180deg); }
+.slot-section-body.collapsed { display: none; }
+
 
 .slot-grid {
   display: grid; gap: 8px;
-  grid-template-columns: repeat(auto-fill, minmax(94px, 1fr));
+  /* Three across on a phone, more as the screen allows. */
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
 }
 .slot {
   position: relative;
-  border: 1px solid var(--border-strong); border-radius: var(--radius-md);
-  background: var(--surface); color: var(--text);
-  padding: 12px 8px; font: inherit; font-size: 15px; font-weight: 600;
+  border: 1px solid transparent; border-radius: 999px;
+  background: var(--surface-sunken); color: var(--text);
+  /* 46px tall at this font size — comfortably above the 44px minimum
+     touch target, since this is the control the whole app exists for. */
+  padding: 13px 8px; font: inherit; font-size: 15px; font-weight: 600;
   cursor: pointer; text-align: center;
-  transition: border-color var(--dur) var(--ease-out), transform var(--dur) var(--ease-out);
+  transition: background var(--dur) var(--ease-out), transform var(--dur) var(--ease-out);
 }
-.slot:hover { border-color: var(--brand-500); transform: translateY(-1px); }
+.slot:hover { background: var(--border); transform: translateY(-1px); }
 .slot.selected {
-  border-color: var(--brand-500); background: var(--brand-600); color: #fff;
+  background: var(--brand-600); color: #fff;
   box-shadow: 0 0 0 3px var(--brand-glow);
 }
 /* Slots that close an existing gap are surfaced first and marked, since
@@ -235,11 +354,25 @@ input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:f
   background: var(--color-success);
 }
 .slot.selected.closes::after { background: #fff; }
-.slot-legend { font-size: 12.5px; color: var(--muted); margin-top: 10px; }
+.slot-legend { font-size: 12.5px; color: var(--muted); margin: 10px 0 0; }
+.muted-line { color: var(--muted); font-size: 13.5px; margin: 14px 0 0; }
 .slot-legend .dot {
   display: inline-block; width: 6px; height: 6px; border-radius: 50%;
   background: var(--color-success); margin-right: 5px; vertical-align: 1px;
 }
+
+.confirm-bar {
+  position: sticky; bottom: 0;
+  margin: 8px -18px -18px;
+  padding: 14px 18px calc(14px + env(safe-area-inset-bottom));
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, .10);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+:root[data-theme="dark"] .confirm-bar { box-shadow: 0 -8px 24px rgba(0, 0, 0, .38); }
+.confirm-heading { font-weight: 640; font-size: 15px; margin-bottom: 10px; }
+.btn.grow { flex: 1; }
 
 /* ---------- lists ---------- */
 
@@ -348,6 +481,15 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 @media (max-width: 520px) {
   .field-row { flex-direction: column; gap: 0; }
   .page { padding: 16px 12px 56px; }
+
+  /* Truncated to three characters it is noise, and it competes for room
+     with the only control up here that does anything. Who you are signed
+     in as is on the Details tab. */
+  .who { display: none; }
+
+  /* Four across is a wasteful shape for a 45-minute grid on a narrow
+     screen; three keeps the tap targets wide. */
+  .slot-grid { grid-template-columns: repeat(3, 1fr); }
 }
 
 /* The "Powered by Netlify" badge is not stylable from here: Netlify's

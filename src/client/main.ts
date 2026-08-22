@@ -17,6 +17,7 @@ import { LESSON_TYPES, lessonSpec } from "../shared/config.js";
 import { addDayKey, countdown, dayKey, formatDayKeyLong, relativeTime } from "../shared/time.js";
 import { indexRange } from "../shared/dayIndex.js";
 import { formatHours } from "../shared/stats.js";
+import { groupSlots } from "../shared/slotGroups.js";
 import { CHANNELS } from "../shared/contact.js";
 import { checkSignIn, SIGN_IN_MESSAGES } from "../shared/identity.js";
 import { CANCEL_CUTOFF_HOURS } from "../shared/config.js";
@@ -212,13 +213,174 @@ for (const tab of document.querySelectorAll<HTMLButtonElement>(".tab")) {
   });
 }
 
-/* ---------- booking ---------- */
+/**
+ * Land on something useful.
+ *
+ * Bookings close 24 hours ahead, so nothing today is bookable and the
+ * month always opens on tomorrow at the earliest. From there, select the
+ * first day that actually has openings rather than the first day of the
+ * month — otherwise a student's first sight is an empty slot area under
+ * a date that was never going to work, and they have to hunt.
+ *
+ * Looks one month ahead at most: if a coach has no availability at all
+ * there is nothing to find, and paging forever would just hammer the
+ * function.
+ */
+async function openFirstBookableDay(): Promise<void> {
+  const today = dayKey(new Date());
+  const tomorrow = addDayKey(today, 1);
+  const start = tomorrow > indexRange(new Date()).from ? tomorrow : indexRange(new Date()).from;
 
-const dateInput = $<HTMLInputElement>("bookDate");
+  await loadMonth(start.slice(0, 7));
+  let candidate = firstFreeDay(start);
+
+  if (!candidate) {
+    await stepMonth(1);
+    candidate = firstFreeDay(`${visibleMonth}-01`);
+  }
+  if (!candidate) {
+    // Nothing bookable either month: stay put and let renderSlots say so
+    // rather than leaving the page silently blank.
+    renderCalendar();
+    return;
+  }
+
+  selectedDate = candidate;
+  renderCalendar();
+  await loadSlots();
+}
+
+/** The earliest day on or after `from` with at least one free slot. */
+function firstFreeDay(from: string): string | null {
+  const days = (monthData?.days ?? [])
+    .filter(day => day.date >= from && day.count > 0)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  return days[0]?.date ?? null;
+}
+
+/* ---------- the calendar ---------- */
+
+interface MonthDay { date: string; count: number; closesGap: boolean; }
+interface MonthResponse {
+  month: string;
+  earliest: string;
+  latest: string;
+  days: MonthDay[];
+}
+
 const typeSelect = $<HTMLSelectElement>("bookType");
 
-dateInput.addEventListener("change", loadSlots);
-typeSelect.addEventListener("change", loadSlots);
+/** The month on screen, as YYYY-MM. */
+let visibleMonth = "";
+let monthData: MonthResponse | null = null;
+let selectedDate = "";
+
+typeSelect.addEventListener("change", async () => {
+  // Lesson length changes which slots exist, so both views are stale.
+  await loadMonth(visibleMonth);
+  if (selectedDate) await loadSlots();
+});
+
+$("calToggle").addEventListener("click", () => {
+  const button = $("calToggle");
+  const open = button.getAttribute("aria-expanded") !== "false";
+  button.setAttribute("aria-expanded", String(!open));
+  $("calBody").classList.toggle("collapsed", open);
+});
+
+$("calPrev").addEventListener("click", () => void stepMonth(-1));
+$("calNext").addEventListener("click", () => void stepMonth(1));
+
+async function stepMonth(delta: number): Promise<void> {
+  const [year, month] = visibleMonth.split("-").map(Number);
+  const shifted = new Date(Date.UTC(year!, month! - 1 + delta, 1));
+  await loadMonth(`${shifted.getUTCFullYear()}-${pad(shifted.getUTCMonth() + 1)}`);
+}
+
+async function loadMonth(month: string): Promise<void> {
+  visibleMonth = month;
+  try {
+    monthData = await api.get<MonthResponse>(
+      `/api/month?month=${encodeURIComponent(month)}&lessonType=${encodeURIComponent(typeSelect.value)}`
+    );
+  } catch (error) {
+    monthData = null;
+    toast(error instanceof Error ? error.message : "Could not load the month.", "error");
+  }
+  renderCalendar();
+}
+
+function renderCalendar(): void {
+  const label = $("calMonthLabel");
+  const grid = $("calGrid");
+  const weekdays = $("calWeekdays");
+  clear(grid);
+
+  if (weekdays.childElementCount === 0) {
+    // Monday first, matching the calendar app and local convention.
+    for (const day of ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]) {
+      weekdays.append(el("span", undefined, day));
+    }
+  }
+
+  const [year, month] = visibleMonth.split("-").map(Number);
+  label.textContent = monthName(year!, month!);
+
+  const bookable = new Map((monthData?.days ?? []).map(d => [d.date, d]));
+  const today = dayKey(new Date());
+
+  // Blank cells so the 1st lands under its weekday.
+  const firstWeekday = (new Date(Date.UTC(year!, month! - 1, 1)).getUTCDay() + 6) % 7;
+  for (let i = 0; i < firstWeekday; i++) {
+    const filler = el("button", "cal-day outside");
+    filler.type = "button";
+    filler.disabled = true;
+    filler.tabIndex = -1;
+    grid.append(filler);
+  }
+
+  const daysInMonth = new Date(Date.UTC(year!, month!, 0)).getUTCDate();
+  for (let day = 1; day <= daysInMonth; day++) {
+    const date = `${visibleMonth}-${pad(day)}`;
+    const info = bookable.get(date);
+    const free = (info?.count ?? 0) > 0;
+
+    const cell = el("button", "cal-day", String(day));
+    cell.type = "button";
+    cell.disabled = !free;
+    if (date === today) cell.classList.add("today");
+    if (date === selectedDate) cell.classList.add("selected");
+    if (info?.closesGap) cell.classList.add("closes");
+
+    cell.setAttribute("aria-label",
+      `${formatDayKeyLong(date)}${free ? `, ${info!.count} times free` : ", nothing free"}`);
+
+    if (free) {
+      cell.addEventListener("click", () => {
+        selectedDate = date;
+        selected = null;
+        renderCalendar();
+        void loadSlots();
+      });
+    }
+    grid.append(cell);
+  }
+
+  const nav = monthData;
+  $<HTMLButtonElement>("calPrev").disabled = !nav || `${visibleMonth}-01` <= nav.earliest;
+  $<HTMLButtonElement>("calNext").disabled = !nav || `${visibleMonth}-28` >= nav.latest;
+}
+
+function monthName(year: number, month: number): string {
+  return new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric", timeZone: "UTC" })
+    .format(new Date(Date.UTC(year, month - 1, 1)));
+}
+
+function pad(value: number): string {
+  return String(value).padStart(2, "0");
+}
+
+/* ---------- slots ---------- */
 
 $("cancelPick").addEventListener("click", () => {
   selected = null;
@@ -239,7 +401,7 @@ $("confirmBook").addEventListener("click", async () => {
     toast(`Booked for ${result.label} on ${formatDayKeyLong(currentSlots.date)}.`, "success");
     selected = null;
     await refresh();
-    await loadSlots();
+    await Promise.all([loadSlots(), loadMonth(visibleMonth)]);
   } catch (error) {
     // A refused booking is nearly always someone else having taken the
     // slot, so reload rather than leaving a stale list on screen.
@@ -251,9 +413,8 @@ $("confirmBook").addEventListener("click", async () => {
 });
 
 async function loadSlots(): Promise<void> {
-  const date = dateInput.value;
+  if (!selectedDate) return;
   selected = null;
-  if (!date) return;
 
   const host = $("slotHost");
   clear(host);
@@ -262,7 +423,7 @@ async function loadSlots(): Promise<void> {
 
   try {
     currentSlots = await api.get<SlotsResponse>(
-      `/api/slots?date=${encodeURIComponent(date)}&lessonType=${encodeURIComponent(typeSelect.value)}`
+      `/api/slots?date=${encodeURIComponent(selectedDate)}&lessonType=${encodeURIComponent(typeSelect.value)}`
     );
     renderSlots();
   } catch (error) {
@@ -296,30 +457,50 @@ function renderSlots(): void {
 
   if (data.slots.length === 0) {
     host.append(el("p", "empty",
-      "Nothing free that day. Try another date — bookings close 24 hours before the lesson."));
+      "Nothing free that day. Bookings close 24 hours before the lesson."));
     return;
   }
 
-  // Slots that close an existing gap come first: taking one is the most
-  // useful thing a client can do, and it keeps the coach's day packed.
-  const ordered = [...data.slots].sort((a, b) =>
-    Number(b.closesGap) - Number(a.closesGap) || a.label.localeCompare(b.label));
+  host.append(el("p", "sub muted-line", formatDayKeyLong(data.date)));
 
-  const grid = el("div", "slot-grid");
-  for (const slot of ordered) {
-    const button = el("button", `slot${slot.closesGap ? " closes" : ""}`, slot.label);
-    button.type = "button";
-    if (selected?.start === slot.start) button.classList.add("selected");
-    button.addEventListener("click", () => {
-      selected = slot;
-      renderSlots();
-      renderConfirm();
+  for (const section of groupSlots(data.slots)) {
+    const wrap = el("div", "slot-section");
+
+    const head = el("button", "slot-section-head");
+    head.type = "button";
+    head.setAttribute("aria-expanded", "true");
+    head.append(document.createTextNode(section.label));
+    head.insertAdjacentHTML("beforeend",
+      '<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+      'stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg>');
+
+    const body = el("div", "slot-section-body");
+    const grid = el("div", "slot-grid");
+
+    for (const slot of section.slots) {
+      const button = el("button", `slot${slot.closesGap ? " closes" : ""}`, slot.label);
+      button.type = "button";
+      if (selected?.start === slot.start) button.classList.add("selected");
+      button.addEventListener("click", () => {
+        selected = slot;
+        renderSlots();
+        renderConfirm();
+      });
+      grid.append(button);
+    }
+
+    head.addEventListener("click", () => {
+      const open = head.getAttribute("aria-expanded") !== "false";
+      head.setAttribute("aria-expanded", String(!open));
+      body.classList.toggle("collapsed", open);
     });
-    grid.append(button);
-  }
-  host.append(grid);
 
-  if (ordered.some(s => s.closesGap)) {
+    body.append(grid);
+    wrap.append(head, body);
+    host.append(wrap);
+  }
+
+  if (data.slots.some(s => s.closesGap)) {
     const legend = el("p", "slot-legend");
     legend.append(el("span", "dot"), document.createTextNode("Closes a gap in the coach's day"));
     host.append(legend);
@@ -334,7 +515,7 @@ function renderConfirm(): void {
 
   const spec = lessonSpec(currentSlots.lessonType);
   $("confirmHeading").textContent =
-    `${spec.label}, ${selected.label} on ${formatDayKeyLong(currentSlots.date)} (${spec.mins} min)`;
+    `${spec.label} at ${selected.label}, ${formatDayKeyLong(currentSlots.date)}`;
 
   // The band between -36h and -24h is one where a booking cannot be
   // undone. That has to be visible here, not discovered afterwards.
@@ -364,20 +545,7 @@ async function refresh(): Promise<void> {
     }
     typeSelect.value = me.client.defaultLessonType;
   }
-  if (!dateInput.value) {
-    // Not today. Bookings close 24 hours ahead, so every slot today is
-    // already past its cutoff, and the index does not reach back before
-    // the season starts. Opening on a date that cannot be booked greets
-    // a new client with an error they did nothing to cause.
-    const range = indexRange(new Date());
-    const tomorrow = addDayKey(dayKey(new Date()), 1);
-    const earliest = tomorrow > range.from ? tomorrow : range.from;
-
-    dateInput.min = earliest;
-    dateInput.max = range.to;
-    dateInput.value = earliest;
-    await loadSlots();
-  }
+  if (!visibleMonth) await openFirstBookableDay();
 
   renderLessons();
   renderDetails();
