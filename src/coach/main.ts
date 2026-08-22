@@ -14,6 +14,7 @@ import type { CoachStats } from "../shared/stats.js";
 import { api, ApiError } from "../lib/api.js";
 import { coachSession, setCoachSession, useSession } from "../lib/session.js";
 import { $, barChart, clear, el, show, toast, wireTheme } from "../lib/ui.js";
+import { confirmDialog, promptDialog } from "../lib/dialog.js";
 import { LESSON_TYPES, lessonSpec } from "../shared/config.js";
 import { addDayKey, dayKey, formatDayKeyLong, formatTime } from "../shared/time.js";
 import { formatHours } from "../shared/stats.js";
@@ -231,10 +232,18 @@ function renderDay(): void {
 }
 
 async function moveLesson(lesson: DayLesson): Promise<void> {
-  const answer = window.prompt(
-    `Move ${lesson.clientName ?? lesson.title ?? "this lesson"} to what time? (24h, Belgrade)`,
-    lesson.label
-  );
+  const who = lesson.clientName ?? lesson.title ?? "this lesson";
+  const answer = await promptDialog({
+    title: `Move ${who}`,
+    message: `Currently ${lesson.label}. All times are Belgrade.`,
+    label: "New start time",
+    // A real time input: phones give it their own wheel picker, and it
+    // cannot produce something that is not a time.
+    inputType: "time",
+    step: "900",
+    value: lesson.label,
+    confirmLabel: "Move"
+  });
   if (!answer || !/^\d{1,2}:\d{2}$/.test(answer.trim())) return;
 
   const [h, m] = answer.trim().split(":").map(Number);
@@ -244,10 +253,15 @@ async function moveLesson(lesson: DayLesson): Promise<void> {
   const { dayTimeToUtc } = await import("../shared/time.js");
   const target = dayTimeToUtc(dayKey(start), `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
 
-  if (lesson.booked && !window.confirm(
-    `${lesson.clientName ?? "The client"} gets a fresh 12-hour cancellation window, ` +
-    `and will be added to "To tell" for you to message. Continue?`
-  )) return;
+  if (lesson.booked) {
+    const agreed = await confirmDialog({
+      title: "Move a booked lesson?",
+      message: `${lesson.clientName ?? "The client"} gets a fresh 12-hour cancellation window, ` +
+               `and appears under "To tell" for you to message.`,
+      confirmLabel: "Move it"
+    });
+    if (!agreed) return;
+  }
 
   try {
     const result = await api.post<{ warnings: string[] }>("/api/coach/action", {
@@ -262,10 +276,15 @@ async function moveLesson(lesson: DayLesson): Promise<void> {
 }
 
 async function cancelLesson(lesson: DayLesson): Promise<void> {
-  if (!window.confirm(
-    `Cancel ${lesson.clientName ?? lesson.title ?? "this lesson"} at ${lesson.label}?` +
-    (lesson.booked ? " They'll be added to \"To tell\" for you to message." : "")
-  )) return;
+  const agreed = await confirmDialog({
+    title: `Cancel ${lesson.label}?`,
+    message: `${lesson.clientName ?? lesson.title ?? "This lesson"} will come off the calendar.` +
+             (lesson.booked ? ` They'll appear under "To tell" for you to message.` : ""),
+    confirmLabel: "Cancel lesson",
+    cancelLabel: "Keep it",
+    tone: "danger"
+  });
+  if (!agreed) return;
   try {
     await api.post("/api/coach/action", { action: "cancel", lessonId: lesson.lessonId });
     toast("Cancelled.", "success");
@@ -297,10 +316,14 @@ function renderCompact(): void {
 
   const button = el("button", "btn primary", "Apply");
   button.addEventListener("click", async () => {
-    if (!window.confirm(
-      `${day!.compact.moves.length} client(s) will be moved. They'll appear in ` +
-      `"To tell" for you to message. Continue?`
-    )) return;
+    const count = day!.compact.moves.length;
+    const agreed = await confirmDialog({
+      title: `Move ${count} client${count === 1 ? "" : "s"}?`,
+      message: `This closes ${day!.compact.saved} minutes of idle time. ` +
+               `Everyone moved appears under "To tell" for you to message.`,
+      confirmLabel: "Move them"
+    });
+    if (!agreed) return;
     button.disabled = true;
     try {
       await api.post("/api/coach/action", { action: "compact-day", date: day!.date, apply: true });
@@ -372,8 +395,8 @@ function renderAvailability(): void {
     return;
   }
 
-  // Not named `window`: shadowing the global inside a handler that also
-  // calls window.confirm is a trap waiting to be sprung.
+  // Not named `window`: shadowing the global inside a handler is a trap
+  // waiting to be sprung.
   for (const slot of config.availability) {
     const row = el("div", "row");
     const label = slot.date
@@ -390,7 +413,14 @@ function renderAvailability(): void {
 
     const remove = el("button", "btn ghost small", "Remove");
     remove.addEventListener("click", async () => {
-      if (!slot.id || !window.confirm(`Remove ${label}?`)) return;
+      if (!slot.id) return;
+      const agreed = await confirmDialog({
+        title: "Remove this window?",
+        message: `${label}. Students will not be able to book then.`,
+        confirmLabel: "Remove",
+        tone: "danger"
+      });
+      if (!agreed) return;
       await api.post("/api/coach/action", { action: "delete-availability", id: slot.id });
       await loadConfig();
       await loadDay();

@@ -134,6 +134,24 @@ describe("coach statistics", () => {
 });
 
 describe("client statistics", () => {
+  it("shows an upcoming lesson booked before the season opens", () => {
+    // The index reaches back before the season so those dates can be
+    // booked. If the season filter also governed the upcoming list, the
+    // booking would succeed and then be invisible.
+    const beforeSeason: DayIndexDoc[] = [{
+      date: "2026-08-26", rebuiltAt: "", lessons: [
+        lesson("2026-08-26", "18:30", "class", "c9", "Early Bird")
+      ]
+    }];
+    const stats = clientStats("c9", beforeSeason, [], seasonOf("2026-09-07"),
+      new Date("2026-08-22T12:00:00.000Z"));
+
+    expect(stats.upcoming).toHaveLength(1);
+    // ...but it still does not count toward the season's totals.
+    expect(stats.total.count).toBe(0);
+  });
+
+
   const now = new Date("2026-09-20T12:00:00.000Z");
   const stats = clientStats("c1", days, cancellations, seasonOf("2026-09-07"), now);
 

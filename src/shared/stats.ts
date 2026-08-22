@@ -257,13 +257,21 @@ export function clientStats(
   const nowIso = now.toISOString();
 
   for (const day of days) {
-    if (day.date < season.from || day.date > season.to) continue;
+    const inSeason = day.date >= season.from && day.date <= season.to;
+
     for (const occ of day.lessons ?? []) {
       if (occ.clientId !== clientId) continue;
+
+      // A lesson you have booked is upcoming whether or not it falls in
+      // a counted season. Filtering it out of both meant a booking made
+      // before the season opened succeeded and then vanished from "My
+      // lessons" — the student is told it worked and shown nothing.
       if (occ.start > nowIso) {
         upcoming.push(occ);
         continue;
       }
+
+      if (!inSeason) continue;
       add(total, occ);
       const key = day.date.slice(0, 7);
       const month = months.get(key) ?? { key, ...emptyTally() };

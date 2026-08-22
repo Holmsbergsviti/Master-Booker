@@ -108,8 +108,67 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-.page { max-width: 720px; margin: 0 auto; padding: 20px 16px 64px; }
+.page {
+  /* A booking flow is a phone-shaped column. Letting it stretch across a
+     desktop monitor blew the calendar cells up to the size of buttons on
+     a cash machine. */
+  max-width: 460px;
+  margin: 0 auto;
+  padding: 20px 16px 64px;
+}
 .page.wide { max-width: 980px; }
+
+/* ---------- fixed shell ---------- */
+
+/* Header, tabs and calendar hold still; only the times scroll. Scrolling
+   the whole page moved the calendar off-screen just as you were trying
+   to read it against the times below. */
+body:has(.app-shell:not(.hidden)) {
+  height: 100dvh;
+  overflow: hidden;
+}
+body:has(.app-shell:not(.hidden)) .page {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 0;
+}
+
+.app-shell { display: contents; }
+
+.views {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 16px;
+}
+
+/* Every view scrolls its own content rather than the document. */
+.views > .card {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin-bottom: 0;
+}
+
+/* The booking view is a column: fixed calendar, scrolling times, and a
+   confirm bar pinned to the bottom. */
+.views > #bookView {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.views > #bookView.hidden { display: none; }
+
+.slot-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  /* Room for the sticky confirm bar, so the last row of times can always
+     be scrolled clear of it. */
+  scroll-padding-bottom: 24px;
+}
 
 /* ---------- header ---------- */
 
@@ -224,6 +283,10 @@ input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:f
 /* ---------- calendar ---------- */
 
 .calendar {
+  /* Cells are square, so an unbounded width makes them enormous. */
+  max-width: 400px;
+  width: 100%;
+  margin-left: auto; margin-right: auto;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--surface-2);
@@ -362,7 +425,7 @@ input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:f
 }
 
 .confirm-bar {
-  position: sticky; bottom: 0;
+  flex: none;
   margin: 8px -18px -18px;
   padding: 14px 18px calc(14px + env(safe-area-inset-bottom));
   background: var(--surface);
@@ -386,6 +449,28 @@ input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:f
 .row .sub { font-size: 13px; color: var(--muted); }
 
 .empty { color: var(--muted); font-size: 14px; padding: 8px 0; }
+
+/* A day with nothing on it. Centred and given room, because on a phone
+   this is the whole screen and a small grey line reads like a bug. */
+.nothing-free {
+  text-align: center;
+  /* Generous at the bottom so the button always clears the edge of the
+     scroll region rather than sitting half-cut against it. */
+  padding: 26px 12px 32px;
+}
+.nothing-free-title {
+  font-size: 19px; font-weight: 660; line-height: 1.35;
+  margin: 0 0 12px; letter-spacing: -.01em;
+}
+.nothing-free-sub {
+  font-size: 15px; color: var(--text-2); margin: 0 0 20px; line-height: 1.5;
+}
+.nothing-free-sub strong { color: var(--text); font-weight: 640; }
+.nothing-free .btn { padding: 13px 22px; border-radius: 999px; }
+
+/* A day inside the range with nothing free: still selectable, so it can
+   explain itself, but plainly not an invitation. */
+.cal-day.empty:not(.selected) { color: var(--muted); opacity: .55; }
 
 /* ---------- notices ---------- */
 
@@ -474,6 +559,56 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   border: 1px solid var(--border-strong); background: var(--surface);
   border-radius: 999px; width: 34px; height: 34px; cursor: pointer;
   font-size: 15px; line-height: 1; color: var(--text-2);
+}
+
+/* ---------- dialogs ---------- */
+
+.dialog-overlay {
+  position: fixed; inset: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+  background: rgba(15, 23, 42, .55);
+  backdrop-filter: blur(2px);
+  animation: dialog-fade .16s var(--ease-out);
+}
+:root[data-theme="dark"] .dialog-overlay { background: rgba(0, 0, 0, .68); }
+.dialog-overlay.closing { animation: dialog-fade .14s var(--ease-out) reverse; }
+
+.dialog-card {
+  width: min(400px, 100%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: 22px;
+  animation: dialog-rise .2s var(--ease-out);
+}
+
+.dialog-title { font-size: 17px; font-weight: 650; margin: 0 0 6px; letter-spacing: -.01em; }
+.dialog-message { font-size: 14.5px; color: var(--text-2); margin: 0 0 18px; line-height: 1.5; }
+.dialog-card .field { margin: 16px 0 18px; }
+
+.dialog-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.dialog-actions .btn { min-width: 96px; }
+
+@keyframes dialog-fade { from { opacity: 0; } }
+@keyframes dialog-rise { from { opacity: 0; transform: translateY(10px) scale(.98); } }
+
+@media (max-width: 520px) {
+  /* A bottom sheet on a phone: it arrives under the thumb rather than
+     in the middle of the screen, and the buttons are full width so
+     neither is a small target. */
+  .dialog-overlay { align-items: flex-end; padding: 0; }
+  .dialog-card {
+    width: 100%;
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    border-bottom: 0;
+    padding: 22px 18px calc(20px + env(safe-area-inset-bottom));
+    animation: sheet-up .22s var(--ease-out);
+  }
+  .dialog-actions { flex-direction: column-reverse; }
+  .dialog-actions .btn { width: 100%; padding: 13px 16px; }
+  @keyframes sheet-up { from { transform: translateY(100%); } }
 }
 
 .hidden { display: none !important; }

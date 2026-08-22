@@ -33,7 +33,10 @@ export default handler(async (req: Request) => {
   const season = requested ? seasonForYear(Number(requested)) : currentSeason(now);
 
   const range = indexRange(now);
-  const from = season.from < range.from ? range.from : season.from;
+  // Read from wherever the index starts, not from the season: upcoming
+  // lessons can sit before the season opens, and clamping to the season
+  // hid them entirely.
+  const from = range.from;
   const to = season.to > range.to ? range.to : season.to;
 
   const [days, logSnap] = await Promise.all([

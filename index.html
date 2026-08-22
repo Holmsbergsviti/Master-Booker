@@ -65,7 +65,7 @@
   </section>
 
   <!-- ===== Signed in ===== -->
-  <div id="appView" class="hidden">
+  <div id="appView" class="app-shell hidden">
     <nav class="tabs" role="tablist">
       <button class="tab active" data-view="book" role="tab">Book</button>
       <button class="tab" data-view="lessons" role="tab">Lessons</button>
@@ -73,6 +73,7 @@
       <button class="tab" data-view="stats" role="tab">Stats</button>
     </nav>
 
+    <div class="views">
     <!-- ---- Book ---- -->
     <section id="bookView" class="card">
       <div class="field">
@@ -106,8 +107,10 @@
         </div>
       </div>
 
-      <div id="slotNotice" class="notice hidden"></div>
-      <div id="slotHost"></div>
+      <div class="slot-scroll">
+        <div id="slotNotice" class="notice hidden"></div>
+        <div id="slotHost"></div>
+      </div>
 
       <div id="confirmPanel" class="confirm-bar hidden">
         <div id="confirmHeading" class="confirm-heading"></div>
@@ -156,10 +159,12 @@
       <h2>My stats</h2>
       <div id="statsHost"></div>
     </section>
+    </div>
   </div>
 </div>
 
 <div id="toastHost" class="toast-host" aria-live="polite"></div>
+<div id="dialogHost"></div>
 <script type="module" src="/src/client/main.ts"></script>
 </body>
 </html>

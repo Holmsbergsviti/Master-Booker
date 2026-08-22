@@ -13,6 +13,7 @@ import {
   clientSession, setClientSession, useSession, type ClientSession
 } from "../lib/session.js";
 import { $, barChart, clear, el, show, toast, wireTheme } from "../lib/ui.js";
+import { confirmDialog } from "../lib/dialog.js";
 import { LESSON_TYPES, lessonSpec } from "../shared/config.js";
 import { addDayKey, countdown, dayKey, formatDayKeyLong, relativeTime } from "../shared/time.js";
 import { indexRange } from "../shared/dayIndex.js";
@@ -345,9 +346,14 @@ function renderCalendar(): void {
     const info = bookable.get(date);
     const free = (info?.count ?? 0) > 0;
 
-    const cell = el("button", "cal-day", String(day));
+    // A day the index covers at all is selectable, even with nothing
+    // free: tapping it explains why and offers the next date that works,
+    // which beats a dead cell that does nothing when pressed.
+    const reachable = !!info;
+
+    const cell = el("button", `cal-day${free ? "" : " empty"}`, String(day));
     cell.type = "button";
-    cell.disabled = !free;
+    cell.disabled = !reachable;
     if (date === today) cell.classList.add("today");
     if (date === selectedDate) cell.classList.add("selected");
     if (info?.closesGap) cell.classList.add("closes");
@@ -355,7 +361,7 @@ function renderCalendar(): void {
     cell.setAttribute("aria-label",
       `${formatDayKeyLong(date)}${free ? `, ${info!.count} times free` : ", nothing free"}`);
 
-    if (free) {
+    if (reachable) {
       cell.addEventListener("click", () => {
         selectedDate = date;
         selected = null;
@@ -425,6 +431,15 @@ async function loadSlots(): Promise<void> {
     currentSlots = await api.get<SlotsResponse>(
       `/api/slots?date=${encodeURIComponent(selectedDate)}&lessonType=${encodeURIComponent(typeSelect.value)}`
     );
+
+    // Work out the fallback date before drawing, so the empty state can
+    // name it immediately rather than appearing and then changing.
+    lookaheadFreeDay = null;
+    if (currentSlots.slots.length === 0) {
+      const inView = (monthData?.days ?? []).some(day => day.date > selectedDate && day.count > 0);
+      if (!inView) lookaheadFreeDay = await findLaterFreeDay(selectedDate);
+    }
+
     renderSlots();
   } catch (error) {
     clear(host);
@@ -442,8 +457,11 @@ function renderSlots(): void {
   const data = currentSlots;
   if (!data) return;
 
-  if (!data.window) {
-    host.append(el("p", "empty", "The coach isn't teaching that day."));
+  // No window at all and a window with nothing left in it are the same
+  // thing to a student: not today, so when? The difference matters to
+  // the coach, not to someone trying to book a lesson.
+  if (!data.window || data.slots.length === 0) {
+    renderNothingFree(host, !data.window);
     return;
   }
 
@@ -455,11 +473,7 @@ function renderSlots(): void {
       "warn");
   }
 
-  if (data.slots.length === 0) {
-    host.append(el("p", "empty",
-      "Nothing free that day. Bookings close 24 hours before the lesson."));
-    return;
-  }
+
 
   host.append(el("p", "sub muted-line", formatDayKeyLong(data.date)));
 
@@ -507,6 +521,92 @@ function renderSlots(): void {
   }
 
   if (selected) renderConfirm();
+}
+
+/**
+ * A day with nothing on it.
+ *
+ * Says so plainly, then does the work of finding the next date that
+ * works rather than leaving someone to tap through the month looking for
+ * one. Bookings close 24 hours ahead, so "today" is routinely empty and
+ * this is the first thing many students will see.
+ */
+function renderNothingFree(host: HTMLElement, notTeaching = false): void {
+  const empty = el("div", "nothing-free");
+  empty.append(el("p", "nothing-free-title", notTeaching
+    ? "Your coach isn't teaching this day"
+    : "There are no available spots for this day"));
+
+  const next = nextFreeDay(selectedDate);
+  if (!next) {
+    empty.append(el("p", "nothing-free-sub",
+      "Nothing is free in the months ahead either. Your coach may not have opened bookings yet."));
+    host.append(empty);
+    return;
+  }
+
+  const sub = el("p", "nothing-free-sub");
+  sub.append(
+    document.createTextNode("Next available date:"),
+    el("br"),
+    el("strong", undefined, formatDayKeyLong(next))
+  );
+  empty.append(sub);
+
+  const jump = el("button", "btn primary", "Go to the nearest date");
+  jump.type = "button";
+  jump.addEventListener("click", async () => {
+    jump.disabled = true;
+    try {
+      // The next free day may be in a month that is not on screen.
+      if (next.slice(0, 7) !== visibleMonth) await loadMonth(next.slice(0, 7));
+      selectedDate = next;
+      selected = null;
+      renderCalendar();
+      await loadSlots();
+    } finally {
+      jump.disabled = false;
+    }
+  });
+  empty.append(jump);
+  host.append(empty);
+}
+
+/** The soonest day after `from` with something free, looking into later
+ *  months when the loaded one has nothing left. */
+function nextFreeDay(from: string): string | null {
+  const inView = (monthData?.days ?? [])
+    .filter(day => day.date > from && day.count > 0)
+    .sort((a, b) => a.date.localeCompare(b.date))[0];
+  if (inView) return inView.date;
+  return lookaheadFreeDay;
+}
+
+/** Filled in by loadSlots when the visible month runs dry, so the empty
+ *  state can name a date without blocking its own render on a fetch. */
+let lookaheadFreeDay: string | null = null;
+
+async function findLaterFreeDay(from: string): Promise<string | null> {
+  let month = from.slice(0, 7);
+  // Three months is the whole booking horizon; beyond that there is
+  // nothing indexed to find.
+  for (let i = 0; i < 3; i++) {
+    const [year, monthNumber] = month.split("-").map(Number);
+    const shifted = new Date(Date.UTC(year!, monthNumber! - 1 + 1, 1));
+    month = `${shifted.getUTCFullYear()}-${pad(shifted.getUTCMonth() + 1)}`;
+    if (monthData && month > monthData.latest.slice(0, 7)) return null;
+
+    try {
+      const ahead = await api.get<MonthResponse>(
+        `/api/month?month=${encodeURIComponent(month)}&lessonType=${encodeURIComponent(typeSelect.value)}`
+      );
+      const found = ahead.days.filter(day => day.count > 0).sort((a, b) => a.date.localeCompare(b.date))[0];
+      if (found) return found.date;
+    } catch {
+      return null;
+    }
+  }
+  return null;
 }
 
 function renderConfirm(): void {
@@ -616,10 +716,21 @@ function renderLessons(): void {
 }
 
 async function cancelLesson(lesson: UpcomingLesson, isRequest: boolean): Promise<void> {
-  const question = isRequest
-    ? `Ask the coach to cancel ${lesson.label} on ${formatDayKeyLong(lesson.date)}?`
-    : `Cancel ${lesson.label} on ${formatDayKeyLong(lesson.date)}?`;
-  if (!window.confirm(question)) return;
+  const when = `${lesson.label} on ${formatDayKeyLong(lesson.date)}`;
+  const agreed = await confirmDialog(isRequest
+    ? {
+        title: "Ask your coach to cancel?",
+        message: `${when} is past the cancellation cutoff, so your coach has to approve it. They'll be in touch.`,
+        confirmLabel: "Send request"
+      }
+    : {
+        title: "Cancel this lesson?",
+        message: `${when}. You can book another time afterwards.`,
+        confirmLabel: "Cancel lesson",
+        cancelLabel: "Keep it",
+        tone: "danger"
+      });
+  if (!agreed) return;
 
   try {
     const result = await api.post<{ ok: boolean; requested?: boolean }>("/api/cancel", {
