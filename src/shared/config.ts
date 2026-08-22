@@ -85,9 +85,15 @@ export const SLOT_ALIGN_MINUTES = 15;
 
 /* ---------- Day index ---------- */
 
-/** Statistics have a hard floor at the season start, so the index covers
- *  the whole relevant period rather than only the future. */
-export const INDEX_EPOCH = "2026-09-01";
+/** The statistics floor: nothing before this counts toward a season.
+ *
+ *  Deliberately NOT the start of the day index. The two were one
+ *  constant, which meant no date before the season opened could be
+ *  booked at all — the index simply had no document for it, and a
+ *  missing document reads as "not ready", never as "free". Booking and
+ *  statistics want different windows, so they get different constants. */
+export const SEASON_EPOCH = "2026-09-01";
+
 export const INDEX_FORWARD_DAYS = 90;
 
 /** The booking page warns when the index it read is older than this. */

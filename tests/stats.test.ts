@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { AvailabilityDoc, BookingLogDoc, DayIndexDoc } from "../src/shared/types.js";
-import { clientStats, coachStats, formatHours, seasonOf, seasonsAvailable } from "../src/shared/stats.js";
+import {
+  clientStats, coachStats, currentSeason, formatHours, seasonOf, seasonsAvailable
+} from "../src/shared/stats.js";
 import { dayTimeToUtc } from "../src/shared/time.js";
 import { lessonSpec } from "../src/shared/config.js";
 
@@ -58,6 +60,23 @@ describe("seasons", () => {
   it("offers every season from the epoch to now, newest first", () => {
     const list = seasonsAvailable(new Date("2027-10-01T12:00:00Z"));
     expect(list.map(s => s.startYear)).toEqual([2027, 2026]);
+  });
+
+  it("never offers an empty list before the first season opens", () => {
+    // August 2026 falls in the 2025/26 season by the calendar, which
+    // this system has no data for. The picker must still offer the one
+    // real season rather than rendering blank.
+    const list = seasonsAvailable(new Date("2026-08-22T12:00:00Z"));
+    expect(list.map(s => s.startYear)).toEqual([2026]);
+  });
+
+  it("opens on the first real season when today predates the epoch", () => {
+    // seasonOf() alone would say 2025/26, whose range clamps to a start
+    // after its own end — a season that can never contain anything.
+    expect(seasonOf("2026-08-22").startYear).toBe(2025);
+    expect(currentSeason(new Date("2026-08-22T12:00:00Z")).startYear).toBe(2026);
+    expect(currentSeason(new Date("2026-10-01T12:00:00Z")).startYear).toBe(2026);
+    expect(currentSeason(new Date("2027-09-05T12:00:00Z")).startYear).toBe(2027);
   });
 });
 

@@ -15,7 +15,7 @@ import { requireCoach } from "./_lib/auth.js";
 import { handler, json, requireGet } from "./_lib/http.js";
 import { db } from "./_lib/admin.js";
 import { loadAvailability, loadDayIndexRange } from "./_lib/store.js";
-import { coachStats, seasonForYear, seasonOf, seasonsAvailable } from "../../src/shared/stats.js";
+import { coachStats, currentSeason, seasonForYear, seasonsAvailable } from "../../src/shared/stats.js";
 import { dayKey } from "../../src/shared/time.js";
 
 export default handler(async (req: Request) => {
@@ -24,7 +24,7 @@ export default handler(async (req: Request) => {
 
   const now = new Date();
   const requested = new URL(req.url).searchParams.get("season");
-  const season = requested ? seasonForYear(Number(requested)) : seasonOf(dayKey(now));
+  const season = requested ? seasonForYear(Number(requested)) : currentSeason(now);
 
   const [days, availability, logSnap, clientSnap] = await Promise.all([
     loadDayIndexRange(season.from, season.to),

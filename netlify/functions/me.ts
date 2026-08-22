@@ -16,7 +16,7 @@ import { callerFrom, clientFor } from "./_lib/auth.js";
 import { handler, json, requireGet } from "./_lib/http.js";
 import { db } from "./_lib/admin.js";
 import { loadDayIndexRange } from "./_lib/store.js";
-import { clientStats, seasonForYear, seasonOf, seasonsAvailable } from "../../src/shared/stats.js";
+import { clientStats, currentSeason, seasonForYear, seasonsAvailable } from "../../src/shared/stats.js";
 import { canCancel } from "../../src/shared/slotEngine.js";
 import { dayKey, formatTime } from "../../src/shared/time.js";
 import { indexRange } from "../../src/shared/dayIndex.js";
@@ -30,7 +30,7 @@ export default handler(async (req: Request) => {
 
   const url = new URL(req.url);
   const requested = url.searchParams.get("season");
-  const season = requested ? seasonForYear(Number(requested)) : seasonOf(dayKey(now));
+  const season = requested ? seasonForYear(Number(requested)) : currentSeason(now);
 
   const range = indexRange(now);
   const from = season.from < range.from ? range.from : season.from;

@@ -12,7 +12,7 @@
    ===================================================================== */
 
 import type { AvailabilityDoc, BookingLogDoc, DayIndexDoc, Occurrence } from "./types.js";
-import { INDEX_EPOCH, lessonSpec } from "./config.js";
+import { SEASON_EPOCH, lessonSpec } from "./config.js";
 import { offeredMinutes } from "./availability.js";
 import { addDayKey, dayKey, daysBetweenKeys } from "./time.js";
 import { dayKeysBetween } from "./dayIndex.js";
@@ -32,7 +32,7 @@ export function seasonForYear(startYear: number): Season {
     startYear,
     // Nothing before the epoch is counted, whatever the season nominally
     // spans. The first season is short by design.
-    from: from < INDEX_EPOCH ? INDEX_EPOCH : from,
+    from: from < SEASON_EPOCH ? SEASON_EPOCH : from,
     to,
     label: `${startYear}/${String(startYear + 1).slice(2)}`
   };
@@ -45,10 +45,26 @@ export function seasonOf(date: string): Season {
   return seasonForYear(month >= 9 ? year : year - 1);
 }
 
+/**
+ * The season a dashboard should open on.
+ *
+ * Never one that predates the epoch. Before September 2026 the calendar
+ * year puts "today" in the 2025/26 season, which this system has no data
+ * for at all — its range clamps to a start after its own end. Showing
+ * the first real season instead is the only honest answer.
+ */
+export function currentSeason(now: Date = new Date()): Season {
+  const firstYear = seasonOf(SEASON_EPOCH).startYear;
+  const thisYear = seasonOf(dayKey(now)).startYear;
+  return seasonForYear(Math.max(thisYear, firstYear));
+}
+
 /** Every season from the epoch to now, newest first. */
 export function seasonsAvailable(now: Date = new Date()): Season[] {
-  const first = seasonOf(INDEX_EPOCH).startYear;
-  const current = seasonOf(dayKey(now)).startYear;
+  const first = seasonOf(SEASON_EPOCH).startYear;
+  // Clamped, or before September 2026 the loop runs zero times and the
+  // season picker renders empty.
+  const current = Math.max(seasonOf(dayKey(now)).startYear, first);
   const out: Season[] = [];
   for (let y = current; y >= first; y--) out.push(seasonForYear(y));
   return out;

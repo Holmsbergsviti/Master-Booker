@@ -126,6 +126,21 @@ deactivating people, not for onboarding.
 The scheduled function keeps the index healthy on its own: the near-term window every
 15 minutes, everything once a night at 04:00 Belgrade.
 
+## Seasons and the booking window
+
+Two different windows, which used to be one constant and should not have been:
+
+- **`SEASON_EPOCH`** (1 September 2026) is the statistics floor. A season runs
+  1 September to 31 August, and nothing before the epoch counts toward one.
+- **The day index** runs from whichever is earlier, today or the epoch, to today + 90
+  days. It has to reach back to the epoch once the season is under way, because the
+  statistics read the same flattened documents.
+
+Conflating them meant no date before 1 September could be booked at all: the index had
+no document for it, and a missing document is deliberately read as "not ready", never as
+"free". Bookings before the season opens now work; they simply do not count toward a
+season total.
+
 ## Signing in
 
 There is no password and no email anywhere.

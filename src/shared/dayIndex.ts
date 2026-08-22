@@ -19,7 +19,7 @@
    ===================================================================== */
 
 import type { DayIndexDoc, ExceptionDoc, LessonDoc, Occurrence } from "./types.js";
-import { INDEX_EPOCH, INDEX_FORWARD_DAYS, INDEX_STALE_MINUTES } from "./config.js";
+import { INDEX_FORWARD_DAYS, INDEX_STALE_MINUTES, SEASON_EPOCH } from "./config.js";
 import { expandOccurrences, type ExpandOptions } from "./expand.js";
 import { addDayKey, dayKey, dayTimeToUtc, daysBetweenKeys } from "./time.js";
 
@@ -65,11 +65,19 @@ export function buildDayIndex(
   }));
 }
 
-/** The span the index covers: a hard floor at the season epoch, because
- *  statistics read the same flattened data and must reach back to it,
- *  and 90 days forward for booking. */
+/** The span the index covers.
+ *
+ *  Back to whichever comes first, today or the season epoch: statistics
+ *  read this same flattened data and must reach back to the epoch, while
+ *  booking needs every day from now on. Taking the earlier of the two
+ *  serves both, and in particular means dates before the season opens
+ *  are still bookable — they just do not count toward a season. */
 export function indexRange(now: Date = new Date()): { from: string; to: string } {
-  return { from: INDEX_EPOCH, to: addDayKey(dayKey(now), INDEX_FORWARD_DAYS) };
+  const today = dayKey(now);
+  return {
+    from: today < SEASON_EPOCH ? today : SEASON_EPOCH,
+    to: addDayKey(today, INDEX_FORWARD_DAYS)
+  };
 }
 
 /** Every day key from `from` to `to`, inclusive. */

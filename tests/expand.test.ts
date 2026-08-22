@@ -1,7 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ExceptionDoc, LessonDoc } from "../src/shared/types.js";
 import { expandOccurrences } from "../src/shared/expand.js";
-import { affectedDayKeys, buildDayIndex, dayKeysBetween, groupByDay, isStale } from "../src/shared/dayIndex.js";
+import {
+  affectedDayKeys, buildDayIndex, dayKeysBetween, groupByDay, indexRange, isStale
+} from "../src/shared/dayIndex.js";
 import { dayKey, dayTimeToUtc, formatTime } from "../src/shared/time.js";
 import {
   buildCancelledSet, buildLessonCache, fingerprint, occurrencesInRange
@@ -210,6 +212,20 @@ describe("the day index", () => {
       const starts = day.map(l => l.start);
       expect([...starts].sort()).toEqual(starts);
     }
+  });
+
+  it("indexes dates before the season opens, so they can be booked", () => {
+    // The index used to start at the season epoch, which meant no date
+    // before 1 September had a document — and a missing document is
+    // treated as "not ready", never as "free", so nothing was bookable.
+    const august = new Date("2026-08-22T10:00:00.000Z");
+    const range = indexRange(august);
+    expect(range.from).toBe("2026-08-22");
+    expect(dayKeysBetween(range.from, range.to)).toContain("2026-08-25");
+
+    // Once the season is under way it reaches back to the epoch instead,
+    // because the statistics read these same documents.
+    expect(indexRange(new Date("2026-10-15T10:00:00.000Z")).from).toBe("2026-09-01");
   });
 
   it("knows which days a save has to rebuild", () => {
