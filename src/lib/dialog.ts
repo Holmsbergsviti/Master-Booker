@@ -139,6 +139,45 @@ export function confirmDialog(options: ConfirmOptions): Promise<boolean> {
   return built.settle.then(value => value === true);
 }
 
+export interface ChoiceOption {
+  value: string;
+  label: string;
+  tone?: DialogTone;
+}
+
+export interface ChoiceOptions extends ConfirmOptions {
+  options: ChoiceOption[];
+}
+
+/**
+ * Pick one of several actions. Resolves null when dismissed.
+ *
+ * For questions where yes/no would be a lie — cancelling one week of a
+ * weekly booking versus ending the whole series are different requests,
+ * and a confirm dialog can only ask one of them.
+ */
+export function choiceDialog(options: ChoiceOptions): Promise<string | null> {
+  const built = build(options);
+  built.actions.classList.add("dialog-actions-stacked");
+
+  for (const option of options.options) {
+    const button = el("button", `btn ${option.tone === "danger" ? "danger" : "primary"}`, option.label);
+    button.type = "button";
+    button.addEventListener("click", () => built.close(option.value));
+    built.actions.append(button);
+  }
+
+  const cancel = el("button", "btn ghost", options.cancelLabel ?? "Keep it");
+  cancel.type = "button";
+  cancel.addEventListener("click", () => built.close(null));
+  built.actions.append(cancel);
+
+  host().append(built.overlay);
+  requestAnimationFrame(() => built.actions.querySelector("button")?.focus());
+
+  return built.settle.then(value => (typeof value === "string" ? value : null));
+}
+
 /** Ask for a value. Resolves null when dismissed. */
 export function promptDialog(options: PromptOptions): Promise<string | null> {
   const built = build(options);

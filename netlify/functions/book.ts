@@ -14,7 +14,7 @@
    ===================================================================== */
 
 import type { Config } from "@netlify/functions";
-import type { DayIndexDoc, LessonDoc } from "../../src/shared/types.js";
+import type { AvailabilityDoc, ClientDoc, DayIndexDoc, LessonDoc } from "../../src/shared/types.js";
 import { callerFrom, clientFor } from "./_lib/auth.js";
 import { ApiError, handler, json, readJson, requirePost } from "./_lib/http.js";
 import { db } from "./_lib/admin.js";
@@ -22,13 +22,17 @@ import { assertIndexedDate, loadAvailability, notify } from "./_lib/store.js";
 import { windowForDay } from "../../src/shared/availability.js";
 import { COACH, GRACE_MINUTES, lessonSpec } from "../../src/shared/config.js";
 import { isFinalOnceGraceExpires, validateSlot } from "../../src/shared/slotEngine.js";
-import { dayKey, formatTime } from "../../src/shared/time.js";
+import { addDaysWallClock, dayKey, formatTime } from "../../src/shared/time.js";
+import { indexRange } from "../../src/shared/dayIndex.js";
+import { planWeekly } from "../../src/shared/recurrence.js";
 
 interface BookBody {
   date?: string;
   start?: string;
   lessonType?: string;
   flexible?: boolean;
+  /** Same time every week, for as far ahead as the index reaches. */
+  repeatWeekly?: boolean;
 }
 
 export default handler(async (req: Request) => {
@@ -51,8 +55,13 @@ export default handler(async (req: Request) => {
   const spec = lessonSpec(lessonType);
   if (!spec.bookable) throw new ApiError(400, "That lesson type cannot be booked online.");
 
-  const window = windowForDay(await loadAvailability(), date);
+  const availability = await loadAvailability();
+  const window = windowForDay(availability, date);
   if (!window) throw new ApiError(409, "The coach is not teaching that day.");
+
+  if (body.repeatWeekly) {
+    return bookWeekly({ date, startDate, lessonType, client, availability, body, now });
+  }
 
   const indexRef = db().collection("day_index").doc(date);
   const lessonRef = db().collection("lessons").doc();
@@ -76,43 +85,15 @@ export default handler(async (req: Request) => {
     );
     if (!check.ok) throw new ApiError(409, check.message, check.reason);
 
-    const lesson: Omit<LessonDoc, "id"> = {
-      coach: [COACH],
-      // Bookings must write a title in the same style as manual entries —
-      // that is what shows on the coach's calendar.
-      title: client.displayName,
-      start: check.slot.start,
-      end: check.slot.end,
-      occStart: check.slot.start,
-      lessonType,
-      repeatWeekly: false,
-      clientId: client.id,
-      source: "booking",
-      flexible: !!body.flexible,
-      bookedAt: now.toISOString(),
-      graceUntil: graceUntil.toISOString()
-    };
-
+    const lesson = lessonDoc({ client, check, lessonType, body, now, graceUntil });
     tx.set(lessonRef, lesson);
 
     // Keep the index consistent with the write inside the same
     // transaction. The scheduled rebuild would catch up eventually, but
     // "eventually" is long enough for the next student to double-book.
     tx.update(indexRef, {
-      lessons: [...(index.lessons ?? []), {
-        lessonId: lessonRef.id,
-        start: check.slot.start,
-        end: check.slot.end,
-        occStart: check.slot.start,
-        lessonType,
-        coach: lesson.coach,
-        title: client.displayName,
-        clientId: client.id,
-        source: "booking",
-        flexible: !!body.flexible,
-        graceUntil: graceUntil.toISOString(),
-        repeatWeekly: false
-      }].sort((a, b) => a.start.localeCompare(b.start))
+      lessons: [...(index.lessons ?? []), occurrenceFor(lessonRef.id, lesson)]
+        .sort((a, b) => a.start.localeCompare(b.start))
     });
 
     return check.slot;
@@ -139,5 +120,204 @@ export default handler(async (req: Request) => {
     finalAfterGrace: isFinalOnceGraceExpires(startDate, now)
   });
 });
+
+/* =====================================================================
+   Weekly
+   ===================================================================== */
+
+interface WeeklyArgs {
+  date: string;
+  startDate: Date;
+  lessonType: string;
+  client: ClientDoc;
+  availability: AvailabilityDoc[];
+  body: BookBody;
+  now: Date;
+}
+
+/**
+ * The same time every week.
+ *
+ * Written as one repeating document, exactly as the calendar app writes
+ * repeats, with `repeat_exceptions` carving out the weeks that were
+ * already taken. That keeps recurrence knowledge in one place: the day
+ * index expands the rule into later weeks by itself as the horizon rolls
+ * forward, so a series booked today keeps producing lessons in December
+ * without anything else running.
+ *
+ * Every affected day is read inside the transaction, so a series cannot
+ * be sold a slot that someone took while this was being validated.
+ */
+async function bookWeekly(args: WeeklyArgs): Promise<Response> {
+  const { date, startDate, lessonType, client, availability, body, now } = args;
+  const horizon = indexRange(now).to;
+  const startLabel = formatTime(startDate);
+
+  const dates: string[] = [];
+  for (let week = 0; ; week++) {
+    const occurrence = addDaysWallClock(startDate, week * 7);
+    const key = dayKey(occurrence);
+    if (key > horizon) break;
+    dates.push(key);
+    if (dates.length > 60) break;
+  }
+
+  const indexRefs = dates.map(d => db().collection("day_index").doc(d));
+  const lessonRef = db().collection("lessons").doc();
+  const graceUntil = new Date(now.getTime() + GRACE_MINUTES * 60_000);
+
+  const plan = await db().runTransaction(async tx => {
+    const snaps = await tx.getAll(...indexRefs);
+    const byDate = new Map<string, DayIndexDoc>();
+    for (const snap of snaps) {
+      if (snap.exists) byDate.set(snap.id, snap.data() as DayIndexDoc);
+    }
+    if (!byDate.has(date)) {
+      throw new ApiError(503, "That day is not ready for booking yet. Please try again shortly.");
+    }
+
+    const planned = planWeekly({
+      firstDate: date,
+      startLabel,
+      lessonType,
+      now,
+      horizon,
+      windowFor: d => windowForDay(availability, d),
+      // Null, not an empty array: a day with no index document has not
+      // been worked out, and treating it as free would be a guess.
+      existingFor: d => byDate.has(d) ? (byDate.get(d)!.lessons ?? []) : null
+    });
+
+    if (planned.bookable.length === 0) {
+      const first = planned.occurrences[0];
+      throw new ApiError(409, first?.message ?? "None of those weeks are free.", first?.reason);
+    }
+    // The week the student actually pressed on has to be one of them.
+    if (!planned.bookable.some(o => o.date === date)) {
+      const refused = planned.occurrences.find(o => o.date === date);
+      throw new ApiError(409, refused?.message ?? "That time has just been taken.", refused?.reason);
+    }
+
+    const last = planned.bookable[planned.bookable.length - 1]!;
+    const lesson: Omit<LessonDoc, "id"> = {
+      coach: [COACH],
+      title: client.displayName,
+      start: planned.bookable[0]!.start,
+      end: planned.bookable[0]!.end,
+      occStart: planned.bookable[0]!.start,
+      lessonType,
+      repeatWeekly: true,
+      // Bounded at the horizon it was validated to. The series stops
+      // there rather than running into weeks nobody has checked.
+      repeatEndDate: new Date(new Date(last.start).getTime() + 60_000).toISOString(),
+      clientId: client.id,
+      source: "booking",
+      flexible: !!body.flexible,
+      bookedAt: now.toISOString(),
+      graceUntil: graceUntil.toISOString()
+    };
+    tx.set(lessonRef, lesson);
+
+    // Weeks that were already taken become holes in the rule, which is
+    // what repeat_exceptions is for.
+    for (const blocked of planned.blocked) {
+      if (blocked.date < planned.bookable[0]!.date || blocked.date > last.date) continue;
+      tx.set(db().collection("repeat_exceptions").doc(), {
+        parentId: lessonRef.id,
+        occStart: blocked.start,
+        type: "cancel"
+      });
+    }
+
+    for (const occurrence of planned.bookable) {
+      const existing = byDate.get(occurrence.date);
+      if (!existing) continue;
+      tx.update(db().collection("day_index").doc(occurrence.date), {
+        lessons: [...(existing.lessons ?? []), occurrenceFor(lessonRef.id, {
+          ...lesson,
+          start: occurrence.start,
+          end: occurrence.end,
+          occStart: occurrence.start
+        })].sort((a, b) => a.start.localeCompare(b.start))
+      });
+    }
+
+    return planned;
+  });
+
+  const batch = db().batch();
+  notify(batch, {
+    kind: "booking-confirmed",
+    clientId: client.id,
+    lessonId: lessonRef.id,
+    start: plan.bookable[0]!.start,
+    repeatWeekly: true,
+    weeks: plan.bookable.length
+  }, now);
+  await batch.commit();
+
+  return json({
+    ok: true,
+    lessonId: lessonRef.id,
+    repeatWeekly: true,
+    start: plan.bookable[0]!.start,
+    end: plan.bookable[0]!.end,
+    label: startLabel,
+    weeks: plan.bookable.length,
+    // Named so the client can say which weeks it could not get rather
+    // than quietly booking fewer than asked for.
+    skipped: plan.blocked
+      .filter(o => o.date >= plan.bookable[0]!.date)
+      .map(o => ({ date: o.date, message: o.message ?? "Not available" })),
+    graceUntil: graceUntil.toISOString(),
+    finalAfterGrace: isFinalOnceGraceExpires(startDate, now)
+  });
+}
+
+/* ---------- shared shapes ---------- */
+
+function lessonDoc(args: {
+  client: ClientDoc;
+  check: { slot: { start: string; end: string } };
+  lessonType: string;
+  body: BookBody;
+  now: Date;
+  graceUntil: Date;
+}): Omit<LessonDoc, "id"> {
+  return {
+    coach: [COACH],
+    // Bookings must write a title in the same style as manual entries —
+    // that is what shows on the coach's calendar.
+    title: args.client.displayName,
+    start: args.check.slot.start,
+    end: args.check.slot.end,
+    occStart: args.check.slot.start,
+    lessonType: args.lessonType,
+    repeatWeekly: false,
+    clientId: args.client.id,
+    source: "booking",
+    flexible: !!args.body.flexible,
+    bookedAt: args.now.toISOString(),
+    graceUntil: args.graceUntil.toISOString()
+  };
+}
+
+/** The flattened shape the day index stores. */
+function occurrenceFor(lessonId: string, lesson: Omit<LessonDoc, "id">) {
+  return {
+    lessonId,
+    start: lesson.start,
+    end: lesson.end,
+    occStart: lesson.occStart ?? lesson.start,
+    lessonType: lesson.lessonType ?? "class",
+    coach: lesson.coach,
+    title: lesson.title ?? null,
+    clientId: lesson.clientId ?? null,
+    source: lesson.source ?? null,
+    flexible: !!lesson.flexible,
+    graceUntil: lesson.graceUntil ?? null,
+    repeatWeekly: !!lesson.repeatWeekly
+  };
+}
 
 export const config: Config = { path: "/api/book" };

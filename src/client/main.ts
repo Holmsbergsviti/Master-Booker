@@ -13,12 +13,11 @@ import {
   clientSession, setClientSession, useSession, type ClientSession
 } from "../lib/session.js";
 import { $, barChart, clear, el, show, toast, wireTheme } from "../lib/ui.js";
-import { confirmDialog } from "../lib/dialog.js";
+import { choiceDialog, confirmDialog } from "../lib/dialog.js";
 import { LESSON_TYPES, lessonSpec } from "../shared/config.js";
 import { addDayKey, countdown, dayKey, formatDayKeyLong, relativeTime } from "../shared/time.js";
 import { indexRange } from "../shared/dayIndex.js";
 import { formatHours } from "../shared/stats.js";
-import { groupSlots } from "../shared/slotGroups.js";
 import { CHANNELS } from "../shared/contact.js";
 import { checkSignIn, SIGN_IN_MESSAGES } from "../shared/identity.js";
 import { CANCEL_CUTOFF_HOURS } from "../shared/config.js";
@@ -36,6 +35,8 @@ interface SlotsResponse {
 
 interface UpcomingLesson {
   lessonId: string;
+  occStart: string;
+  repeatWeekly: boolean;
   start: string;
   end: string;
   date: string;
@@ -72,6 +73,9 @@ interface BookResponse {
   label: string;
   graceUntil: string;
   finalAfterGrace: boolean;
+  repeatWeekly?: boolean;
+  weeks?: number;
+  skipped?: Array<{ date: string; message: string }>;
 }
 
 /* ---------- state ---------- */
@@ -402,9 +406,23 @@ $("confirmBook").addEventListener("click", async () => {
       date: currentSlots.date,
       start: selected.start,
       lessonType: currentSlots.lessonType,
-      flexible: $<HTMLInputElement>("flexible").checked
+      flexible: $<HTMLInputElement>("flexible").checked,
+      repeatWeekly: $<HTMLInputElement>("repeatWeekly").checked
     });
-    toast(`Booked for ${result.label} on ${formatDayKeyLong(currentSlots.date)}.`, "success");
+
+    if (result.repeatWeekly) {
+      toast(`Booked ${result.weeks} week${result.weeks === 1 ? "" : "s"} at ${result.label}.`, "success");
+      // Never let a partial series pass as a complete one: say which
+      // weeks could not be had rather than quietly booking fewer.
+      if (result.skipped && result.skipped.length > 0) {
+        toast(`${result.skipped.length} week${result.skipped.length === 1 ? " was" : "s were"} already taken: ` +
+          result.skipped.slice(0, 3).map(s => formatDayKeyLong(s.date)).join(", ") +
+          (result.skipped.length > 3 ? "…" : ""), "info");
+      }
+    } else {
+      toast(`Booked for ${result.label} on ${formatDayKeyLong(currentSlots.date)}.`, "success");
+    }
+    $<HTMLInputElement>("repeatWeekly").checked = false;
     selected = null;
     await refresh();
     await Promise.all([loadSlots(), loadMonth(visibleMonth)]);
@@ -477,42 +495,22 @@ function renderSlots(): void {
 
   host.append(el("p", "sub muted-line", formatDayKeyLong(data.date)));
 
-  for (const section of groupSlots(data.slots)) {
-    const wrap = el("div", "slot-section");
-
-    const head = el("button", "slot-section-head");
-    head.type = "button";
-    head.setAttribute("aria-expanded", "true");
-    head.append(document.createTextNode(section.label));
-    head.insertAdjacentHTML("beforeend",
-      '<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
-      'stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg>');
-
-    const body = el("div", "slot-section-body");
-    const grid = el("div", "slot-grid");
-
-    for (const slot of section.slots) {
-      const button = el("button", `slot${slot.closesGap ? " closes" : ""}`, slot.label);
-      button.type = "button";
-      if (selected?.start === slot.start) button.classList.add("selected");
-      button.addEventListener("click", () => {
-        selected = slot;
-        renderSlots();
-        renderConfirm();
-      });
-      grid.append(button);
-    }
-
-    head.addEventListener("click", () => {
-      const open = head.getAttribute("aria-expanded") !== "false";
-      head.setAttribute("aria-expanded", String(!open));
-      body.classList.toggle("collapsed", open);
+  // One chronological grid. Splitting a studio's 16:00-21:00 evening
+  // into "Day" and "Evening" put a heading above two times and another
+  // above three, which is more furniture than the list it organises.
+  const grid = el("div", "slot-grid");
+  for (const slot of [...data.slots].sort((a, b) => a.label.localeCompare(b.label))) {
+    const button = el("button", `slot${slot.closesGap ? " closes" : ""}`, slot.label);
+    button.type = "button";
+    if (selected?.start === slot.start) button.classList.add("selected");
+    button.addEventListener("click", () => {
+      selected = slot;
+      renderSlots();
+      renderConfirm();
     });
-
-    body.append(grid);
-    wrap.append(head, body);
-    host.append(wrap);
+    grid.append(button);
   }
+  host.append(grid);
 
   if (data.slots.some(s => s.closesGap)) {
     const legend = el("p", "slot-legend");
@@ -685,7 +683,10 @@ function renderLessons(): void {
     left.append(
       el("div", "time", `${lesson.label} · ${formatDayKeyLong(lesson.date)}`),
       el("div", "sub",
-        `${lessonSpec(lesson.lessonType).label}${lesson.flexible ? " · flexible" : ""} · ${relativeTime(new Date(), new Date(lesson.start))}`)
+        `${lessonSpec(lesson.lessonType).label}` +
+        (lesson.repeatWeekly ? " · every week" : "") +
+        (lesson.flexible ? " · flexible" : "") +
+        ` · ${relativeTime(new Date(), new Date(lesson.start))}`)
     );
     row.append(left);
 
@@ -717,30 +718,50 @@ function renderLessons(): void {
 
 async function cancelLesson(lesson: UpcomingLesson, isRequest: boolean): Promise<void> {
   const when = `${lesson.label} on ${formatDayKeyLong(lesson.date)}`;
-  const agreed = await confirmDialog(isRequest
-    ? {
-        title: "Ask your coach to cancel?",
-        message: `${when} is past the cancellation cutoff, so your coach has to approve it. They'll be in touch.`,
-        confirmLabel: "Send request"
-      }
-    : {
-        title: "Cancel this lesson?",
-        message: `${when}. You can book another time afterwards.`,
-        confirmLabel: "Cancel lesson",
-        cancelLabel: "Keep it",
-        tone: "danger"
-      });
-  if (!agreed) return;
+  let scope: "one" | "series" = "one";
+
+  if (isRequest) {
+    const agreed = await confirmDialog({
+      title: "Ask your coach to cancel?",
+      message: `${when} is past the cancellation cutoff, so your coach has to approve it. They'll be in touch.`,
+      confirmLabel: "Send request"
+    });
+    if (!agreed) return;
+  } else if (lesson.repeatWeekly) {
+    // A weekly booking has two quite different meanings of "cancel", and
+    // guessing the wrong one either strands twelve weeks or wipes them.
+    const choice = await choiceDialog({
+      title: "Cancel which?",
+      message: `${when} repeats every week.`,
+      options: [
+        { value: "one", label: "Just this week" },
+        { value: "series", label: "This and all future weeks", tone: "danger" }
+      ]
+    });
+    if (!choice) return;
+    scope = choice as "one" | "series";
+  } else {
+    const agreed = await confirmDialog({
+      title: "Cancel this lesson?",
+      message: `${when}. You can book another time afterwards.`,
+      confirmLabel: "Cancel lesson",
+      cancelLabel: "Keep it",
+      tone: "danger"
+    });
+    if (!agreed) return;
+  }
 
   try {
     const result = await api.post<{ ok: boolean; requested?: boolean }>("/api/cancel", {
-      lessonId: lesson.lessonId
+      lessonId: lesson.lessonId,
+      occStart: lesson.occStart,
+      scope
     });
     toast(result.requested
       ? "Sent to your coach. They'll be in touch."
-      : "Cancelled.", "success");
+      : scope === "series" ? "Weekly booking ended." : "Cancelled.", "success");
     await refresh();
-    await loadSlots();
+    await Promise.all([loadSlots(), loadMonth(visibleMonth)]);
   } catch (error) {
     toast(error instanceof Error ? error.message : "Could not cancel.", "error");
   }

@@ -28,8 +28,9 @@
 
 import type { DayWindow, Occurrence, Slot } from "./types.js";
 import {
-  BOOK_CUTOFF_HOURS, BREAK_MINUTES, BREAK_RESET_MINUTES, CANCEL_CUTOFF_HOURS,
-  GAP_BUDGET_TABLE, LESSONS_PER_BREAK, SLOT_ALIGN_MINUTES, lessonSpec
+  BOOK_CUTOFF_HOURS, BREAK_MINUTES, BREAK_RESET_MINUTES, BUDGET_RELAXATION,
+  CANCEL_CUTOFF_HOURS, GAP_BUDGET_TABLE, LESSONS_PER_BREAK, MIN_SLOTS_OFFERED,
+  SLOT_ALIGN_MINUTES, lessonSpec
 } from "./config.js";
 import { dayKey, dayTimeToUtc, minutesOfDay, minutesToTime, timeToMinutes } from "./time.js";
 
@@ -197,16 +198,43 @@ export function toIntervals(existing: Occurrence[], date: string): Interval[] {
  * Every 15-minute-aligned start time in the window, tested against the
  * rules. Around twenty candidates per day — trivial to compute, and it
  * means there is exactly one definition of "legal", used for both
- * display and confirmation. They can never drift apart.
+ * display and confirmation.
+ *
+ * The budget is loosened here rather than by the caller, so the list a
+ * student sees and the list /api/book accepts are produced by the same
+ * pass. Relaxing in only one of them would let someone book a slot the
+ * page never offered, or be refused one it did.
  */
 export function evaluateCandidates(req: SlotRequest): Candidate[] {
+  const windowStartUtc = dayTimeToUtc(req.date, req.window.start);
+  const base = gapBudget(windowStartUtc, req.now, req.window.gapBudget);
+
+  let result = candidatesAtBudget(req, base);
+  if (countOk(result) >= MIN_SLOTS_OFFERED) return result;
+
+  // A per-day override is the coach saying exactly what they want; do
+  // not talk them out of it.
+  if (req.window.gapBudget !== null && req.window.gapBudget !== undefined) return result;
+
+  for (const budget of BUDGET_RELAXATION) {
+    if (budget <= base) continue;
+    const looser = candidatesAtBudget(req, budget);
+    if (countOk(looser) > countOk(result)) result = looser;
+    if (countOk(result) >= MIN_SLOTS_OFFERED) break;
+  }
+  return result;
+}
+
+function countOk(candidates: Candidate[]): number {
+  return candidates.reduce((n, c) => n + (c.ok ? 1 : 0), 0);
+}
+
+function candidatesAtBudget(req: SlotRequest, budget: number): Candidate[] {
   const spec = lessonSpec(req.lessonType);
   const duration = spec.mins;
   const windowStartMin = timeToMinutes(req.window.start);
   const windowEndMin = timeToMinutes(req.window.end);
-  const windowStartUtc = dayTimeToUtc(req.date, req.window.start);
 
-  const budget = gapBudget(windowStartUtc, req.now, req.window.gapBudget);
   const existing = toIntervals(req.existing, req.date);
   const before = deadTime(existing);
 

@@ -52,6 +52,10 @@ export default handler(async (req: Request) => {
     const cancellable = canCancel(start, occ.graceUntil, now);
     return {
       lessonId: occ.lessonId,
+      // Which week of a series this is. A repeat has many occurrences
+      // behind one lessonId, so cancelling needs both.
+      occStart: occ.occStart ?? occ.start,
+      repeatWeekly: !!occ.repeatWeekly,
       start: occ.start,
       end: occ.end,
       date: dayKey(start),

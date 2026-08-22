@@ -5,7 +5,7 @@ import {
   isFinalOnceGraceExpires, offeredSlots, validateSlot, type Interval
 } from "../src/shared/slotEngine.js";
 import { dayTimeToUtc } from "../src/shared/time.js";
-import { lessonSpec } from "../src/shared/config.js";
+import { MIN_SLOTS_OFFERED, lessonSpec } from "../src/shared/config.js";
 
 const DATE = "2026-09-07"; // Monday
 const WINDOW = (gapBudget: number | null = 45): DayWindow =>
@@ -257,15 +257,68 @@ describe("gap budget by lead time", () => {
     expect(gapBudget(windowStart, hoursBefore(10 * 24), 0)).toBe(0);
   });
 
-  it("permits only adjacent slots inside 3 days", () => {
+  it("still prefers adjacent slots inside 3 days", () => {
     const now = hoursBefore(3 * 24 - 1);
     const request = { date: DATE, window: WINDOW(null), existing: [lesson("18:00")], lessonType: "class", now };
-    const labels = offeredSlots(request).map(s => s.label);
-    expect(labels).toContain("17:15"); // ends exactly at 18:00
-    expect(labels).toContain("18:45"); // starts exactly at 18:45
-    expect(labels).not.toContain("19:30");
+    const slots = offeredSlots(request);
+    // The ones that leave no idle time are the ones marked as closing a
+    // gap, and they are exactly the adjacent pair.
+    expect(slots.filter(s => s.deadAfter === 0).map(s => s.label).sort())
+      .toEqual(["17:15", "18:45"]);
   });
 });
+
+describe("never showing a nearly-empty day", () => {
+  const windowStart = dayTimeToUtc(DATE, "16:00");
+  const hoursBefore = (h: number) => new Date(windowStart.getTime() - h * 3_600_000);
+
+  it("loosens the budget rather than offering two times", () => {
+    // Two days out the budget is zero, so a day holding one lesson has
+    // exactly two adjacent slots. That reads as "fully booked" when the
+    // evening is half empty.
+    const now = hoursBefore(2 * 24);
+    const request = { date: DATE, window: WINDOW(null), existing: [lesson("18:00")], lessonType: "class", now };
+    expect(gapBudget(windowStart, now)).toBe(0);
+    expect(offeredSlots(request).length).toBeGreaterThanOrEqual(MIN_SLOTS_OFFERED);
+  });
+
+  it("leaves a day alone when the strict budget already offers enough", () => {
+    const now = hoursBefore(2 * 24);
+    const existing = [lesson("17:00"), lesson("19:00")];
+    const strict = offeredSlots({ date: DATE, window: WINDOW(null), existing, lessonType: "class", now });
+    expect(strict.length).toBeGreaterThanOrEqual(MIN_SLOTS_OFFERED);
+    // Nothing was relaxed, so the day stays as tight as the rule wanted.
+    expect(strict.every(s => s.deadAfter <= 75)).toBe(true);
+  });
+
+  it("respects a per-day override instead of talking the coach out of it", () => {
+    // An explicit budget is the coach saying exactly what they want.
+    const now = hoursBefore(2 * 24);
+    const request = { date: DATE, window: WINDOW(0), existing: [lesson("18:00")], lessonType: "class", now };
+    expect(offeredSlots(request).map(s => s.label).sort()).toEqual(["17:15", "18:45"]);
+  });
+
+  it("keeps display and confirmation identical after relaxing", () => {
+    // The relaxation happens inside the shared generator, so a slot the
+    // page offers is a slot /api/book accepts — and nothing else is.
+    const now = hoursBefore(2 * 24);
+    const request = { date: DATE, window: WINDOW(null), existing: [lesson("18:00")], lessonType: "class", now };
+    const offered = offeredSlots(request);
+    for (const slot of offered) {
+      expect(validateSlot(request, slot.start).ok, slot.label).toBe(true);
+    }
+    // ...and a time that was not offered is refused.
+    const notOffered = evaluateCandidates(request).find(c => !c.ok);
+    if (notOffered) {
+      const iso = dayTimeToUtc(DATE, minutesToLabel(notOffered.startMin)).toISOString();
+      expect(validateSlot(request, iso).ok).toBe(false);
+    }
+  });
+});
+
+function minutesToLabel(minutes: number): string {
+  return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+}
 
 /* ===================================================================== */
 

@@ -20,12 +20,15 @@
       document.documentElement.setAttribute("data-theme", theme);
     })();
   </script>
+  <link rel="icon" type="image/jpeg" href="/master-logo.jpg">
+  <link rel="apple-touch-icon" href="/master-logo.jpg">
   <link rel="stylesheet" href="/src/style.css">
 </head>
 <body>
 
 <div class="page">
   <header class="app-header">
+    <img class="app-logo" src="/master-logo.jpg" alt="" width="34" height="34">
     <h1>Master Dance Studio</h1>
     <span class="spacer"></span>
     <span id="who" class="who"></span>
@@ -76,6 +79,8 @@
     <div class="views">
     <!-- ---- Book ---- -->
     <section id="bookView" class="card">
+      <div class="book-layout">
+      <div class="book-side">
       <div class="field">
         <label class="field-label" for="bookType">Lesson</label>
         <select id="bookType"></select>
@@ -107,6 +112,9 @@
         </div>
       </div>
 
+      </div>
+
+      <div class="book-main">
       <div class="slot-scroll">
         <div id="slotNotice" class="notice hidden"></div>
         <div id="slotHost"></div>
@@ -115,6 +123,13 @@
       <div id="confirmPanel" class="confirm-bar hidden">
         <div id="confirmHeading" class="confirm-heading"></div>
         <div id="finalWarning" class="notice warn hidden"></div>
+        <label class="check">
+          <input id="repeatWeekly" type="checkbox">
+          <span class="check-text">
+            Every week at this time
+            <small id="repeatHint">Books the same slot each week. You can cancel any single week later.</small>
+          </span>
+        </label>
         <label class="check">
           <input id="flexible" type="checkbox">
           <span class="check-text">
@@ -126,6 +141,8 @@
           <button id="confirmBook" class="btn primary grow">Confirm booking</button>
           <button id="cancelPick" class="btn ghost">Back</button>
         </div>
+      </div>
+      </div>
       </div>
     </section>
 

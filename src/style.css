@@ -109,9 +109,8 @@ body {
 }
 
 .page {
-  /* A booking flow is a phone-shaped column. Letting it stretch across a
-     desktop monitor blew the calendar cells up to the size of buttons on
-     a cash machine. */
+  /* Phone-shaped by default. Widened only where there is room for two
+     columns, below. */
   max-width: 460px;
   margin: 0 auto;
   padding: 20px 16px 64px;
@@ -168,6 +167,46 @@ body:has(.app-shell:not(.hidden)) .page {
   /* Room for the sticky confirm bar, so the last row of times can always
      be scrolled clear of it. */
   scroll-padding-bottom: 24px;
+}
+
+.book-layout { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.book-side { flex: none; }
+.book-main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+/* Two columns once there is width for them.
+   Stacked, a desktop screen gave the calendar everything and squeezed
+   the times into a sliver at the bottom — the one thing the page is for.
+   Side by side, both are fully visible and nothing scrolls. */
+@media (min-width: 820px) {
+  .page:not(.wide) { max-width: 880px; }
+
+  /* The fixed shell exists to stop a phone scrolling the calendar out of
+     view. On a wide screen everything fits at once, so the constraint
+     only stretched the card to the full viewport height and left a lot
+     of empty space under three pills. Back to normal document flow. */
+  body:has(.app-shell:not(.hidden)) { height: auto; overflow: visible; }
+  body:has(.app-shell:not(.hidden)) .page { height: auto; display: block; padding-bottom: 48px; }
+  .views { display: block; padding-bottom: 0; }
+  .views > .card { flex: none; overflow: visible; margin-bottom: 16px; }
+  .views > #bookView { display: block; overflow: visible; }
+  .slot-scroll { overflow: visible; }
+
+  .book-layout {
+    display: grid;
+    grid-template-columns: 380px 1fr;
+    gap: 28px;
+    align-items: start;
+  }
+  .calendar { max-width: none; }
+
+  /* Nothing to pin against on a tall screen. */
+  .confirm-bar {
+    margin: 12px 0 0;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    box-shadow: none;
+    padding: 16px;
+  }
 }
 
 /* ---------- header ---------- */
@@ -374,21 +413,6 @@ input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:f
 
 /* ---------- slots ---------- */
 
-.slot-section { margin-bottom: 4px; }
-.slot-section-head {
-  display: flex; align-items: center; width: 100%;
-  border: 0; background: none; cursor: pointer;
-  font: inherit; font-size: 15px; font-weight: 620; color: var(--text);
-  padding: 12px 2px; text-align: left;
-}
-.slot-section-head .chev {
-  width: 16px; height: 16px; margin-left: auto; color: var(--muted);
-  transition: transform var(--dur) var(--ease-out);
-}
-.slot-section-head[aria-expanded="false"] .chev { transform: rotate(180deg); }
-.slot-section-body.collapsed { display: none; }
-
-
 .slot-grid {
   display: grid; gap: 8px;
   /* Three across on a phone, more as the screen allows. */
@@ -589,6 +613,11 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .dialog-card .field { margin: 16px 0 18px; }
 
 .dialog-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+/* Several actions rather than yes/no: stacked and full width, so no
+   option reads as the default by being wider or further right. */
+.dialog-actions-stacked { flex-direction: column; }
+.dialog-actions-stacked .btn { width: 100%; }
 .dialog-actions .btn { min-width: 96px; }
 
 @keyframes dialog-fade { from { opacity: 0; } }
@@ -607,6 +636,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
     animation: sheet-up .22s var(--ease-out);
   }
   .dialog-actions { flex-direction: column-reverse; }
+  .dialog-actions-stacked { flex-direction: column; }
   .dialog-actions .btn { width: 100%; padding: 13px 16px; }
   @keyframes sheet-up { from { transform: translateY(100%); } }
 }

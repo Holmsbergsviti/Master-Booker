@@ -78,25 +78,31 @@ export const COACH_CHANGE_GRACE_HOURS = 12;
 /** Clients who tick the flexible box consent to being shifted this far. */
 export const FLEXIBLE_SHIFT_MINUTES = 60;
 
+/**
+ * Never offer a day fewer times than this while a looser budget would
+ * allow more.
+ *
+ * The lead-time table is right about packing the coach's day and wrong
+ * about what a student should see: two days out the budget is zero, so a
+ * day holding two lessons offers exactly the two slots touching them.
+ * That reads as "fully booked" when the evening is half empty, and it
+ * pushes people to ring up instead.
+ *
+ * So the budget is a starting point, not a floor. If it yields fewer
+ * than this, it is loosened a rung at a time until it does — the day
+ * still fills from the tightest end, because gap-closing slots are
+ * marked and taken first.
+ */
+export const MIN_SLOTS_OFFERED = 3;
+
+/** Budgets to fall back through when the day is too quiet. The last rung
+ *  gives up on packing entirely rather than showing an empty day. */
+export const BUDGET_RELAXATION: readonly number[] = [45, 90, 180, Infinity];
+
 /* ---------- Slots ---------- */
 
 /** Candidate start times are aligned to this grid. */
 export const SLOT_ALIGN_MINUTES = 15;
-
-/* ---------- Slot grouping ---------- */
-
-/** Slots are shown under time-of-day headings rather than as one long
- *  list, because on a phone only a handful are visible at once and a
- *  flat grid gives no sense of where you are in the day.
- *
- *  Boundaries are minutes past midnight. A section with nothing in it is
- *  not rendered, so a studio that only opens in the evening shows one
- *  heading rather than two empty ones. */
-export const SLOT_SECTIONS: ReadonlyArray<{ id: string; label: string; untilMinutes: number }> = [
-  { id: "morning", label: "Morning", untilMinutes: 12 * 60 },
-  { id: "day",     label: "Day",     untilMinutes: 18 * 60 },
-  { id: "evening", label: "Evening", untilMinutes: 24 * 60 }
-];
 
 /* ---------- Day index ---------- */
 
