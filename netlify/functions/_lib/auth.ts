@@ -80,6 +80,23 @@ export async function isCoach(req: Request): Promise<boolean> {
   }
 }
 
+/** Either the coach, or whoever holds REBUILD_TOKEN. The token is a low
+ *  privilege one on purpose: it can only recompute derived data, so the
+ *  calendar app can embed it without putting the coach panel at risk. */
+export async function requireRebuildCaller(req: Request): Promise<void> {
+  const token = bearer(req);
+  const [prefix, secret] = splitOnce(token, ":");
+
+  if (prefix === "coach") {
+    await requireCoach(req);
+    return;
+  }
+  const expected = process.env.REBUILD_TOKEN;
+  if (prefix === "rebuild" && expected && secret && safeEqual(expected, secret)) return;
+
+  throw new ApiError(403, "Not allowed to trigger a rebuild.");
+}
+
 export async function clientById(id: string): Promise<ClientDoc> {
   const doc = await db().collection("clients").doc(id).get();
   if (!doc.exists) throw new ApiError(404, "No such client.");

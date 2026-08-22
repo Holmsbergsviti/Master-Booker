@@ -9,6 +9,7 @@
 
 import type { Config } from "@netlify/functions";
 import { handler, json, readJson, requirePost, ApiError } from "./_lib/http.js";
+import { requireRebuildCaller } from "./_lib/auth.js";
 import { rebuildAll, rebuildDays } from "./_lib/store.js";
 import { dayKeysBetween, indexRange } from "../../src/shared/dayIndex.js";
 
@@ -22,6 +23,14 @@ interface RebuildBody {
 
 export default handler(async (req: Request) => {
   requirePost(req);
+  // Cheap to call and expensive to serve — a full rebuild reads every
+  // lesson and writes four hundred documents — so it is not left open to
+  // the internet. The calendar app carries REBUILD_TOKEN, which is
+  // deliberately not the coach passcode: that token ends up in
+  // browser-visible JavaScript, and all it can do is recompute derived
+  // data.
+  await requireRebuildCaller(req);
+
   const body = await readJson<RebuildBody>(req);
   const now = new Date();
 

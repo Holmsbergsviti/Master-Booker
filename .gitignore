@@ -1,8 +1,11 @@
 node_modules/
 dist/
 .netlify/
+# Every .env variant is ignored, and the example is allowed back in.
+# A new name like .env.netlify must never slip through by not matching.
 .env
-.env.local
+.env.*
+!.env.example
 *.local
 .DS_Store
 serviceAccountKey.json

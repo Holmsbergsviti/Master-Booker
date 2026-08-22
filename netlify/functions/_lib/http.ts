@@ -22,6 +22,20 @@ export function fail(error: unknown): Response {
   if (error instanceof ApiError) {
     return json({ error: error.message, code: error.code ?? null }, error.status);
   }
+
+  // A deployment missing its credentials is not an unexpected failure,
+  // it is a setup step nobody has done yet — and "Something went wrong"
+  // gives whoever deployed it nothing to act on. The *name* of an
+  // environment variable is not a secret; its value is, and that is
+  // never included.
+  if (error instanceof Error && /^Missing environment variable /.test(error.message)) {
+    console.error("Configuration error:", error.message);
+    return json({
+      error: `The server is not configured: ${error.message}.`,
+      code: "not-configured"
+    }, 503);
+  }
+
   console.error("Unhandled function error:", error);
   return json({ error: "Something went wrong. Please try again." }, 500);
 }

@@ -350,6 +350,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .page { padding: 16px 12px 56px; }
 }
 
-a[href*="netlify.com"] {
-  display: none;
-}
+/* The "Powered by Netlify" badge is not stylable from here: Netlify's
+   edge injects it after </html> and renders it in a shadow root, so no
+   selector in this file reaches it. It is turned off per project in
+   Project configuration > General > Powered by Netlify badge. */
