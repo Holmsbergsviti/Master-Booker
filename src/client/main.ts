@@ -9,10 +9,13 @@
 import "../style.css";
 import type { Slot } from "../shared/types.js";
 import { api, ApiError } from "../lib/api.js";
-import { clientSession, setClientSession, type ClientSession } from "../lib/session.js";
+import {
+  clientSession, setClientSession, useSession, type ClientSession
+} from "../lib/session.js";
 import { $, barChart, clear, el, show, toast, wireTheme } from "../lib/ui.js";
 import { LESSON_TYPES, lessonSpec } from "../shared/config.js";
-import { countdown, dayKey, formatDayKeyLong, relativeTime } from "../shared/time.js";
+import { addDayKey, countdown, dayKey, formatDayKeyLong, relativeTime } from "../shared/time.js";
+import { indexRange } from "../shared/dayIndex.js";
 import { formatHours } from "../shared/stats.js";
 import { CHANNELS } from "../shared/contact.js";
 import { checkSignIn, SIGN_IN_MESSAGES } from "../shared/identity.js";
@@ -78,10 +81,25 @@ let countdownTimer: number | undefined;
 
 /* ---------- boot ---------- */
 
+// Before any request: this page is the client site, whatever else the
+// browser may also be signed into.
+useSession("client");
+
 wireTheme($("themeToggle"));
 renderChannelPicker($("signinChannels"), []);
 
-void start();
+// Deferred to a microtask, not called outright.
+//
+// Module-level `const`s further down this file — the date input, the
+// selects — are still in their temporal dead zone while the top of the
+// module is executing, and start() reaches them. Calling it directly
+// threw "Cannot access 'X' before initialization" and rendered a blank
+// page, but only for someone who already had a stored session, since
+// otherwise start() returns before touching them.
+//
+// A microtask runs after all top-level code has finished, so every
+// declaration exists by then regardless of where it appears.
+queueMicrotask(() => void start());
 
 async function start(): Promise<void> {
   const session = clientSession();
@@ -347,8 +365,17 @@ async function refresh(): Promise<void> {
     typeSelect.value = me.client.defaultLessonType;
   }
   if (!dateInput.value) {
-    dateInput.value = dayKey(new Date());
-    dateInput.min = dayKey(new Date());
+    // Not today. Bookings close 24 hours ahead, so every slot today is
+    // already past its cutoff, and the index does not reach back before
+    // the season starts. Opening on a date that cannot be booked greets
+    // a new client with an error they did nothing to cause.
+    const range = indexRange(new Date());
+    const tomorrow = addDayKey(dayKey(new Date()), 1);
+    const earliest = tomorrow > range.from ? tomorrow : range.from;
+
+    dateInput.min = earliest;
+    dateInput.max = range.to;
+    dateInput.value = earliest;
     await loadSlots();
   }
 

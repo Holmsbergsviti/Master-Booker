@@ -61,9 +61,27 @@ export function setCoachSession(token: string | null): void {
 }
 
 /** The Authorization header value for whichever session is active. */
+export type SessionKind = "client" | "coach";
+
+let kind: SessionKind = "client";
+
+/**
+ * Which session this page uses. Declared once at boot by each app.
+ *
+ * It must not be inferred from what happens to be in storage. Both apps
+ * live on one origin and therefore share localStorage, so a coach who
+ * also books lessons has both sessions at once — and picking whichever
+ * is present sent `Bearer coach:...` to the client endpoints, which
+ * rejected it, cleared the session and asked them to sign in again, for
+ * ever.
+ */
+export function useSession(value: SessionKind): void {
+  kind = value;
+}
+
+/** The Authorization header value for this page's session. */
 export function bearerToken(): string | null {
-  const coach = coachSession();
-  if (coach) return coach;
+  if (kind === "coach") return coachSession();
   const client = clientSession();
   return client ? `client:${client.clientId}:${client.token}` : null;
 }

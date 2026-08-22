@@ -12,7 +12,7 @@ import type { AvailabilityDoc, ClientDoc, Occurrence, RequestDoc } from "../shar
 import type { CompactPlan } from "../shared/compact.js";
 import type { CoachStats } from "../shared/stats.js";
 import { api, ApiError } from "../lib/api.js";
-import { coachSession, setCoachSession } from "../lib/session.js";
+import { coachSession, setCoachSession, useSession } from "../lib/session.js";
 import { $, barChart, clear, el, show, toast, wireTheme } from "../lib/ui.js";
 import { LESSON_TYPES, lessonSpec } from "../shared/config.js";
 import { addDayKey, dayKey, formatDayKeyLong, formatTime } from "../shared/time.js";
@@ -64,8 +64,21 @@ let stats: StatsResponse | null = null;
 
 /* ---------- boot ---------- */
 
+useSession("coach");
+
 wireTheme($("themeToggle"));
-void start();
+// Deferred to a microtask, not called outright.
+//
+// Module-level `const`s further down this file — the date input, the
+// selects — are still in their temporal dead zone while the top of the
+// module is executing, and start() reaches them. Calling it directly
+// threw "Cannot access 'X' before initialization" and rendered a blank
+// page, but only for someone who already had a stored session, since
+// otherwise start() returns before touching them.
+//
+// A microtask runs after all top-level code has finished, so every
+// declaration exists by then regardless of where it appears.
+queueMicrotask(() => void start());
 
 async function start(): Promise<void> {
   if (!coachSession()) {
