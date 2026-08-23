@@ -14,6 +14,9 @@ export interface ClientSession {
   clientId: string;
   token: string;
   displayName: string;
+  /** Kept here so the booking controls can render before /api/me
+   *  returns; it is only a default and the server always decides. */
+  defaultLessonType?: string;
 }
 
 /** localStorage throws in private mode on some browsers rather than

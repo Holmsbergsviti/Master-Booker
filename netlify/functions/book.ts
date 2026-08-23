@@ -55,7 +55,7 @@ export default handler(async (req: Request) => {
   const spec = lessonSpec(lessonType);
   if (!spec.bookable) throw new ApiError(400, "That lesson type cannot be booked online.");
 
-  const availability = await loadAvailability();
+  const availability = await loadAvailability({ fresh: true });
   const window = windowForDay(availability, date);
   if (!window) throw new ApiError(409, "The coach is not teaching that day.");
 

@@ -22,7 +22,7 @@ import { requireCoach } from "./_lib/auth.js";
 import { ApiError, handler, json, readJson, requirePost } from "./_lib/http.js";
 import { FieldValue } from "firebase-admin/firestore";
 import { db } from "./_lib/admin.js";
-import { loadAvailability, loadDayIndex, notify, rebuildDays } from "./_lib/store.js";
+import { forgetAvailability, loadAvailability, loadDayIndex, notify, rebuildDays } from "./_lib/store.js";
 import { windowForDay } from "../../src/shared/availability.js";
 import { affectedDayKeys } from "../../src/shared/dayIndex.js";
 import { compactDay, type Move } from "../../src/shared/compact.js";
@@ -276,20 +276,38 @@ async function saveAvailability(body: Body, now: Date): Promise<Response> {
     closed: !!doc.closed
   };
 
+  const existing = await loadAvailability({ fresh: true });
+
+  // Adding "every Monday" when a Monday rule already exists used to
+  // leave both behind, with the resolver picking one and the panel
+  // listing two. A window supersedes its own slot rather than piling up
+  // next to it — same weekday, or same date.
+  const superseded = existing.filter(doc => doc.id
+    && doc.id !== body.id
+    && (payload.date
+      ? doc.date === payload.date
+      : !doc.date && doc.weekday === payload.weekday));
+
   const id = typeof body.id === "string" && body.id ? body.id : undefined;
   const ref = id ? db().collection("availability").doc(id) : db().collection("availability").doc();
-  await ref.set(payload);
+
+  const batch = db().batch();
+  batch.set(ref, payload);
+  for (const old of superseded) batch.delete(db().collection("availability").doc(old.id!));
+  await batch.commit();
+  forgetAvailability();
 
   // Availability does not live in the index, but the pages that read it
   // alongside the index should not show one refreshed and the other not.
   if (payload.date) await rebuildDays([payload.date], now);
-  return json({ ok: true, id: ref.id });
+  return json({ ok: true, id: ref.id, replaced: superseded.length });
 }
 
 async function deleteAvailability(body: Body, _now: Date): Promise<Response> {
   const id = String(body.id ?? "");
   if (!id) throw new ApiError(400, "Which window?");
   await db().collection("availability").doc(id).delete();
+  forgetAvailability();
   return json({ ok: true });
 }
 

@@ -73,7 +73,8 @@ export default handler(async (req: Request) => {
       created: false,
       clientId: client.id,
       token,
-      displayName: client.displayName
+      displayName: client.displayName,
+      defaultLessonType: client.defaultLessonType ?? DEFAULT_LESSON_TYPE
     });
   }
 
@@ -90,7 +91,13 @@ export default handler(async (req: Request) => {
     createdAt: new Date().toISOString()
   });
 
-  return json({ created: true, clientId: ref.id, token, displayName: fullName });
+  return json({
+    created: true,
+    clientId: ref.id,
+    token,
+    displayName: fullName,
+    defaultLessonType: DEFAULT_LESSON_TYPE
+  });
 });
 
 /** Opaque and unguessable, so a client id on its own is not a login. */

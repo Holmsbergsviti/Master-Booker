@@ -20,6 +20,7 @@ import { windowForDay } from "../../src/shared/availability.js";
 import { dayKeysBetween, indexRange } from "../../src/shared/dayIndex.js";
 import { offeredSlots } from "../../src/shared/slotEngine.js";
 import { lessonSpec } from "../../src/shared/config.js";
+import type { Slot } from "../../src/shared/types.js";
 import { parseDayKey } from "../../src/shared/time.js";
 
 export default handler(async (req: Request) => {
@@ -77,16 +78,47 @@ export default handler(async (req: Request) => {
     };
   });
 
+  // The page always needs the times for the first day it will land on,
+  // and asking for them separately meant a second round trip before
+  // anything appeared. A round trip costs ~120ms whatever it carries, so
+  // the day the caller is about to select rides along with the month.
+  let firstSlots: { date: string; window: { start: string; end: string }; slots: Slot[] } | null = null;
+  if (url.searchParams.get("withSlots") === "first") {
+    const wanted = url.searchParams.get("on");
+    const target = wanted && days.some(d => d.date === wanted && d.count > 0)
+      ? wanted
+      : days.find(d => d.count > 0)?.date;
+
+    if (target) {
+      const window = windowForDay(availability, target);
+      if (window) {
+        firstSlots = {
+          date: target,
+          window: { start: window.start, end: window.end },
+          slots: offeredSlots({
+            date: target,
+            window,
+            existing: byDate.get(target)?.lessons ?? [],
+            lessonType,
+            now
+          })
+        };
+      }
+    }
+  }
+
   return json({
     month,
     first,
     last,
     lessonType,
+    durationMins: spec.mins,
     // The bounds the calendar may page to, so it cannot walk off into
     // months that hold nothing.
     earliest: range.from,
     latest: range.to,
-    days
+    days,
+    firstSlots
   });
 });
 

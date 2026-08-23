@@ -8,6 +8,7 @@ import type {
 } from "../../../src/shared/types.js";
 import { COACH, COACH_CHANGE_GRACE_HOURS } from "../../../src/shared/config.js";
 import { buildDayIndex, dayKeysBetween, indexRange } from "../../../src/shared/dayIndex.js";
+import { dayKey } from "../../../src/shared/time.js";
 import { windowForDay } from "../../../src/shared/availability.js";
 import { FieldPath } from "firebase-admin/firestore";
 import { db } from "./admin.js";
@@ -31,9 +32,32 @@ export async function loadExceptions(): Promise<ExceptionDoc[]> {
   return snap.docs.map(d => ({ ...(d.data() as ExceptionDoc), id: d.id }));
 }
 
-export async function loadAvailability(): Promise<AvailabilityDoc[]> {
+/* Every request that offers a slot reads the whole availability
+   collection, and a Firestore round trip costs about the same whether it
+   returns four documents or four hundred. Windows change a few times a
+   month, so a warm function holding them for a few seconds removes a
+   round trip from nearly every request.
+
+   The booking path passes `fresh` and bypasses this: a stale window
+   there could accept a lesson outside the coach's hours, and being
+   right matters more than being quick at the moment of writing. */
+const AVAILABILITY_TTL_MS = 20_000;
+let availabilityCache: { at: number; docs: AvailabilityDoc[] } | null = null;
+
+export async function loadAvailability(options: { fresh?: boolean } = {}): Promise<AvailabilityDoc[]> {
+  if (!options.fresh && availabilityCache && Date.now() - availabilityCache.at < AVAILABILITY_TTL_MS) {
+    return availabilityCache.docs;
+  }
   const snap = await db().collection("availability").get();
-  return snap.docs.map(d => ({ ...(d.data() as AvailabilityDoc), id: d.id }));
+  const docs = snap.docs.map(d => ({ ...(d.data() as AvailabilityDoc), id: d.id }));
+  availabilityCache = { at: Date.now(), docs };
+  return docs;
+}
+
+/** Called after any change so this instance does not serve what it just
+ *  replaced. Other warm instances age out within the TTL. */
+export function forgetAvailability(): void {
+  availabilityCache = null;
 }
 
 export async function loadDayIndex(date: string): Promise<DayIndexDoc | null> {
@@ -122,6 +146,27 @@ export async function rebuildDays(dayKeys: string[], now = new Date()): Promise<
   if (moved.length > 0) await handleMovedBookings(moved, now);
 
   return { days: written, lessons: total, moved };
+}
+
+/**
+ * Delete dated windows whose day has passed.
+ *
+ * A dated entry only ever matches its own date, so once that date is
+ * behind us the document can never apply again — but every request that
+ * offers a slot reads the whole collection, so a season of one-off
+ * overrides would quietly tax every booking. Weekly patterns are left
+ * alone; they are meant to persist.
+ */
+export async function pruneAvailability(now = new Date()): Promise<number> {
+  const cutoff = dayKey(now);
+  const snap = await db().collection("availability").where("date", "<", cutoff).get();
+  if (snap.empty) return 0;
+
+  const batch = db().batch();
+  for (const doc of snap.docs) batch.delete(doc.ref);
+  await batch.commit();
+  forgetAvailability();
+  return snap.size;
 }
 
 /** Rebuild everything the index covers. The nightly safety net. */

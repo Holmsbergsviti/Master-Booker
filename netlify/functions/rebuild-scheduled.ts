@@ -12,7 +12,7 @@
    ===================================================================== */
 
 import type { Config } from "@netlify/functions";
-import { rebuildAll, rebuildDays } from "./_lib/store.js";
+import { pruneAvailability, rebuildAll, rebuildDays } from "./_lib/store.js";
 import { dayKeysBetween, indexRange } from "../../src/shared/dayIndex.js";
 import { addDayKey, dayKey, wallParts } from "../../src/shared/time.js";
 
@@ -23,7 +23,11 @@ export default async () => {
   // A full rebuild walks ~400 documents; run it when nobody is booking.
   if (hour === 4) {
     const result = await rebuildAll(now);
-    console.log("Nightly full rebuild", result.days, "days,", result.lessons, "lessons");
+    // Dated windows that can never match again would otherwise be read
+    // by every booking request, for ever.
+    const pruned = await pruneAvailability(now);
+    console.log("Nightly full rebuild", result.days, "days,", result.lessons, "lessons,",
+      pruned, "expired availability windows pruned");
     return new Response("ok");
   }
 

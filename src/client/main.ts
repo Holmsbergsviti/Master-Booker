@@ -114,8 +114,20 @@ async function start(): Promise<void> {
     return;
   }
   try {
-    await refresh();
+    // The booking view needs the lesson types and a month. Both come
+    // without /api/me: the types are configuration and the default is
+    // already in the session, so the calendar can be fetched straight
+    // away instead of queuing behind a request it does not need.
+    fillLessonTypes(session.defaultLessonType);
     showSignedIn();
+
+    // The month carries the first day's times with it, so this is the
+    // only request between opening the page and seeing something.
+    // "My lessons" and the stats load alongside rather than in front.
+    await Promise.all([
+      openFirstBookableDay(),
+      refresh().catch(reportSessionError)
+    ]);
   } catch (error) {
     // A token the server no longer recognises means the record was
     // removed or reset; ask them to sign in again rather than leaving a
@@ -128,6 +140,28 @@ async function start(): Promise<void> {
     }
     toast(error instanceof Error ? error.message : "Could not load your bookings.", "error");
   }
+}
+
+function reportSessionError(error: unknown): void {
+  if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+    setClientSession(null);
+    showSignedOut();
+    notice($("loginNotice"), error.message, "warn");
+    return;
+  }
+  toast(error instanceof Error ? error.message : "Could not load your bookings.", "error");
+}
+
+/** The bookable types are configuration, not server state. */
+function fillLessonTypes(preferred?: string): void {
+  if (typeSelect.options.length > 0) return;
+  for (const [value, spec] of Object.entries(LESSON_TYPES)) {
+    if (!spec.bookable) continue;
+    const option = el("option", undefined, `${spec.label} · ${spec.mins} min`);
+    option.value = value;
+    typeSelect.append(option);
+  }
+  if (preferred) typeSelect.value = preferred;
 }
 
 function showSignedIn(): void {
@@ -168,10 +202,12 @@ $("signIn").addEventListener("click", async () => {
     setClientSession({
       clientId: session.clientId,
       token: session.token,
-      displayName: session.displayName
+      displayName: session.displayName,
+      defaultLessonType: session.defaultLessonType
     });
-    await refresh();
+    fillLessonTypes(session.defaultLessonType);
     showSignedIn();
+    await Promise.all([openFirstBookableDay(), refresh()]);
     toast(session.created
       ? `Welcome, ${session.displayName}.`
       : `Welcome back, ${session.displayName}.`, "success");
@@ -236,11 +272,11 @@ async function openFirstBookableDay(): Promise<void> {
   const tomorrow = addDayKey(today, 1);
   const start = tomorrow > indexRange(new Date()).from ? tomorrow : indexRange(new Date()).from;
 
-  await loadMonth(start.slice(0, 7));
+  await loadMonth(start.slice(0, 7), { withSlots: true });
   let candidate = firstFreeDay(start);
 
   if (!candidate) {
-    await stepMonth(1);
+    await stepMonth(1, { withSlots: true });
     candidate = firstFreeDay(`${visibleMonth}-01`);
   }
   if (!candidate) {
@@ -252,6 +288,20 @@ async function openFirstBookableDay(): Promise<void> {
 
   selectedDate = candidate;
   renderCalendar();
+
+  // Already in hand if the month returned it, which is the usual case.
+  if (monthData?.firstSlots?.date === candidate) {
+    currentSlots = {
+      date: candidate,
+      window: monthData.firstSlots.window,
+      lessonType: monthData.lessonType,
+      durationMins: monthData.durationMins,
+      slots: monthData.firstSlots.slots,
+      stale: false
+    };
+    renderSlots();
+    return;
+  }
   await loadSlots();
 }
 
@@ -270,7 +320,12 @@ interface MonthResponse {
   month: string;
   earliest: string;
   latest: string;
+  lessonType: string;
+  durationMins: number;
   days: MonthDay[];
+  /** The times for the day the page is about to land on, sent with the
+   *  month so opening the page costs one request rather than two. */
+  firstSlots: { date: string; window: { start: string; end: string }; slots: Slot[] } | null;
 }
 
 const typeSelect = $<HTMLSelectElement>("bookType");
@@ -296,17 +351,19 @@ $("calToggle").addEventListener("click", () => {
 $("calPrev").addEventListener("click", () => void stepMonth(-1));
 $("calNext").addEventListener("click", () => void stepMonth(1));
 
-async function stepMonth(delta: number): Promise<void> {
+async function stepMonth(delta: number, options: { withSlots?: boolean } = {}): Promise<void> {
   const [year, month] = visibleMonth.split("-").map(Number);
   const shifted = new Date(Date.UTC(year!, month! - 1 + delta, 1));
-  await loadMonth(`${shifted.getUTCFullYear()}-${pad(shifted.getUTCMonth() + 1)}`);
+  await loadMonth(`${shifted.getUTCFullYear()}-${pad(shifted.getUTCMonth() + 1)}`, options);
 }
 
-async function loadMonth(month: string): Promise<void> {
+async function loadMonth(month: string, options: { withSlots?: boolean } = {}): Promise<void> {
   visibleMonth = month;
   try {
     monthData = await api.get<MonthResponse>(
-      `/api/month?month=${encodeURIComponent(month)}&lessonType=${encodeURIComponent(typeSelect.value)}`
+      `/api/month?month=${encodeURIComponent(month)}` +
+      `&lessonType=${encodeURIComponent(typeSelect.value)}` +
+      (options.withSlots ? "&withSlots=first" : "")
     );
   } catch (error) {
     monthData = null;
@@ -633,17 +690,7 @@ async function refresh(): Promise<void> {
   me = await api.get<MeResponse>("/api/me");
   $("who").textContent = me.client.displayName;
 
-  // Only offer the types this client can actually book.
-  if (typeSelect.options.length === 0) {
-    for (const [value, spec] of Object.entries(LESSON_TYPES)) {
-      if (!spec.bookable) continue;
-      const option = el("option", undefined, `${spec.label} · ${spec.mins} min`);
-      option.value = value;
-      typeSelect.append(option);
-    }
-    typeSelect.value = me.client.defaultLessonType;
-  }
-  if (!visibleMonth) await openFirstBookableDay();
+  fillLessonTypes(me.client.defaultLessonType);
 
   renderLessons();
   renderDetails();
